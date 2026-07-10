@@ -242,13 +242,15 @@ async function runAutoConnect() {
 
   try {
     await ensureBridge();
+    // Stop log poll before connecting — prevents queue contention
+    stopLogPoll();
     const { ipAddress, port = 5005, license = 1261, deviceId = '', netPassword = 0, protocolType = -1 } = config;
     const normalizedProtocol = protocolType === null || protocolType === undefined ? -1 : Number(protocolType);
     // Use timeout from saved config — longer timeout needed for first connect
-    const normalizedTimeout = Number(config.timeoutMs) > 0 ? Number(config.timeoutMs) : 10000;
+    const normalizedTimeout = Number(config.timeoutMs) > 0 ? Number(config.timeoutMs) : 15000;
     const result = await sendCommand(
       `CONNECT|${ipAddress}|${Number(port)}|${Number(license)}|${deviceId}|${Number(netPassword)}|${normalizedProtocol}|${normalizedTimeout}`,
-      normalizedTimeout + 5000
+      normalizedTimeout + 10000
     );
     if (result.success) {
       currentDevice = result.data;
@@ -256,8 +258,8 @@ async function runAutoConnect() {
       console.log(`Auto-connect: connected successfully to ${ipAddress}`);
       refreshUsersCache().catch(() => null); // pull users so names resolve immediately
       startLogPoll();
-      // Keep polling to detect disconnection
-      scheduleAutoConnect(15000);
+      // Check connection health every 30s (not 15s — gives log poll room to breathe)
+      scheduleAutoConnect(30000);
     } else {
       console.log(`Auto-connect failed (attempt #${attempt}): ${result.error || 'unknown error'}`);
       // Retry with capped backoff: 3s, 4.5s, 6.7s, … 30s max
@@ -351,7 +353,40 @@ async function ensureBridge() {
   if (!bridgeReady) throw new Error('FK bridge did not start. Build FKBridge first and confirm FKBridge.exe exists.');
 }
 
+// Command lock — only one bridge command runs at a time
+let commandLock = false;
+const commandQueue = [];
+
 async function sendCommand(command, timeoutMs = 30000) {
+  await ensureBridge();
+  // Serialize all commands through a queue so they never overlap
+  return new Promise((resolve) => {
+    commandQueue.push({ command, timeoutMs, resolve });
+    drainCommandQueue();
+  });
+}
+
+async function drainCommandQueue() {
+  if (commandLock || commandQueue.length === 0) return;
+  commandLock = true;
+  // Prioritise CONNECT commands — if one is waiting, drop all GET_LOGS in front of it
+  const connectIdx = commandQueue.findIndex(({ command }) => command.startsWith('CONNECT'));
+  if (connectIdx > 0) {
+    // Remove all non-CONNECT commands ahead of it to avoid blocking connect
+    commandQueue.splice(0, connectIdx);
+  }
+  const { command, timeoutMs, resolve } = commandQueue.shift();
+  try {
+    const result = await sendCommandRaw(command, timeoutMs);
+    resolve(result);
+  } catch (err) {
+    resolve({ success: false, type: 'ERROR', error: err.message });
+  }
+  commandLock = false;
+  if (commandQueue.length > 0) setImmediate(drainCommandQueue);
+}
+
+async function sendCommandRaw(command, timeoutMs = 30000) {
   await ensureBridge();
   return new Promise((resolve) => {
     let done = false;
@@ -580,7 +615,7 @@ app.post('/api/device/connect', async (req, res) => {
     autoConnectAttempt = 0;
     refreshUsersCache().catch(() => null);
     startLogPoll();
-    scheduleAutoConnect(15000);
+    scheduleAutoConnect(30000);
   }
   apiResult(res, result);
 });
@@ -607,7 +642,7 @@ app.post('/api/device/connect-saved', async (req, res) => {
     autoConnectAttempt = 0;
     refreshUsersCache().catch(() => null);
     startLogPoll();
-    scheduleAutoConnect(15000);
+    scheduleAutoConnect(30000);
   }
   apiResult(res, result);
 });
