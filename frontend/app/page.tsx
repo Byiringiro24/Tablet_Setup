@@ -305,7 +305,8 @@ export default function SmartAttendanceDashboard() {
     setConnectStatus(attempt === 0 ? "connecting" : "retrying");
     if (attempt === 0) toast.loading("Connecting to device...", { id: "ac" });
     try {
-      const res = await deviceApi.connect({ ...deviceFormRef.current, timeoutMs: 3000 });
+      // Always use saved config — never send form values so we never overwrite the saved IP
+      const res = await deviceApi.connectSaved();
       if (!mountedRef.current) return;
       setDevice(res.data.data);
       setConnectStatus("connected");
@@ -362,7 +363,21 @@ export default function SmartAttendanceDashboard() {
     closeDevModal();
     toast.success("Settings saved — reconnecting…");
     if (autoConnectRef.current) clearTimeout(autoConnectRef.current);
-    setTimeout(() => attemptConnect(0), 100);
+    // Save and connect with the new values (this is the only place we call connect with explicit values)
+    deviceApi.connect({ ...devForm, timeoutMs: 3000, saveConfig: true })
+      .then((res) => {
+        setDevice(res.data.data);
+        setConnectStatus("connected");
+        toast.success("Device connected with new settings", { id: "ac" });
+        refreshDashboard();
+        scheduleReconnectCheck();
+      })
+      .catch(() => {
+        setDevice(null);
+        setConnectStatus("retrying");
+        toast.error("Connection failed with new settings — retrying...", { id: "ac" });
+        setTimeout(() => attemptConnect(0), 100);
+      });
   }
 
   /* ── data actions ── */

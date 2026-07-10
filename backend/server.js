@@ -30,6 +30,11 @@ let autoConnectTimer = null;
 let autoConnectEnabled = true;
 let autoConnectAttempt = 0;
 
+// activeDeviceConfig is the single source of truth for what IP to connect to.
+// Loaded from file at startup, only updated when Developer modal saves new settings.
+// Never re-read from disk during auto-connect to avoid stale browser overwrites.
+let activeDeviceConfig = loadDeviceConfig();
+
 // SSE clients — set of response objects
 const sseClients = new Set();
 
@@ -182,12 +187,15 @@ async function runAutoConnect() {
   if (!autoConnectEnabled) return;
   if (currentDevice && currentDevice.connected) return;
 
-  const config = loadDeviceConfig();
-  if (!config || !config.ipAddress) {
-    console.log('Auto-connect: no saved device config, retrying in 10s...');
+  // Use the in-memory cached config — never re-read from file during auto-connect
+  // (file can be overwritten by stale browser requests; memory is authoritative)
+  if (!activeDeviceConfig || !activeDeviceConfig.ipAddress) {
+    console.log('Auto-connect: no device config in memory, retrying in 10s...');
     scheduleAutoConnect(10000);
     return;
   }
+
+  const config = activeDeviceConfig;
 
   autoConnectAttempt += 1;
   const attempt = autoConnectAttempt;
@@ -501,14 +509,25 @@ app.post('/api/device/connect', async (req, res) => {
     netPassword = 0,
     protocolType = -1,
     timeoutMs = 3000,
+    saveConfig = false,   // only save when explicitly requested (Developer modal)
   } = req.body;
   const targetAddress = ipAddress || address;
   const normalizedProtocol = protocolType === null || protocolType === undefined ? -1 : Number(protocolType);
-  // Short device timeout so failure is reported fast; manual connect still gets a slightly longer budget
   const normalizedTimeout = Number(timeoutMs) > 0 ? Number(timeoutMs) : 3000;
 
-  // Persist config so auto-connect can use it across restarts
-  saveDeviceConfig({ ipAddress: targetAddress, port: Number(port), license: Number(license), deviceId, netPassword: Number(netPassword), protocolType: normalizedProtocol, timeoutMs: normalizedTimeout });
+  // Only persist the config when saveConfig=true (sent only by the Developer modal)
+  if (saveConfig === true) {
+    const cfg = { ipAddress: targetAddress, port: Number(port), license: Number(license), deviceId, netPassword: Number(netPassword), protocolType: normalizedProtocol, timeoutMs: normalizedTimeout };
+    saveDeviceConfig(cfg);
+    activeDeviceConfig = cfg;  // update in-memory so auto-connect uses new IP immediately
+  } else {
+    // If there is already a saved config with a different IP, ignore the caller's IP and use the saved one
+    const existing = loadDeviceConfig();
+    if (existing && existing.ipAddress && existing.ipAddress !== targetAddress) {
+      console.log(`Connect request for ${targetAddress} ignored — saved config says ${existing.ipAddress}. Use Developer settings to change the device IP.`);
+      return res.status(400).json({ success: false, error: `Device IP mismatch. Saved IP is ${existing.ipAddress}. Open Developer settings to update it.` });
+    }
+  }
 
   const result = await sendCommand(
     `CONNECT|${targetAddress}|${Number(port)}|${Number(license)}|${deviceId}|${Number(netPassword)}|${normalizedProtocol}|${normalizedTimeout}`,
@@ -518,7 +537,27 @@ app.post('/api/device/connect', async (req, res) => {
     currentDevice = result.data;
     autoConnectAttempt = 0;
     startLogPoll();
-    // Resume polling to detect future disconnections
+    scheduleAutoConnect(15000);
+  }
+  apiResult(res, result);
+});
+
+// Connect using saved config — frontend calls this so it never overwrites the saved IP
+app.post('/api/device/connect-saved', async (req, res) => {
+  const config = loadDeviceConfig();
+  if (!config || !config.ipAddress) {
+    return res.status(400).json({ success: false, error: 'No saved device config. Use Developer settings to set the IP first.' });
+  }
+  const { ipAddress, port = 5005, license = 1261, deviceId = '', netPassword = 0, protocolType = -1 } = config;
+  const normalizedProtocol = protocolType === null || protocolType === undefined ? -1 : Number(protocolType);
+  const result = await sendCommand(
+    `CONNECT|${ipAddress}|${Number(port)}|${Number(license)}|${deviceId}|${Number(netPassword)}|${normalizedProtocol}|3000`,
+    8000
+  );
+  if (result.success) {
+    currentDevice = result.data;
+    autoConnectAttempt = 0;
+    startLogPoll();
     scheduleAutoConnect(15000);
   }
   apiResult(res, result);
@@ -528,7 +567,6 @@ app.post('/api/device/disconnect', async (req, res) => {
   const result = await sendCommand('DISCONNECT');
   currentDevice = null;
   stopLogPoll();
-  // Stop auto-connect loop when user explicitly disconnects
   autoConnectEnabled = false;
   if (autoConnectTimer) { clearTimeout(autoConnectTimer); autoConnectTimer = null; }
   apiResult(res, result);
