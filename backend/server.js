@@ -553,7 +553,11 @@ app.post('/api/device/connect', async (req, res) => {
 
 // Connect using saved config — frontend calls this so it never overwrites the saved IP
 app.post('/api/device/connect-saved', async (req, res) => {
-  const config = loadDeviceConfig();
+  // If already connected, return current device state immediately — no need to reconnect
+  if (currentDevice && currentDevice.connected) {
+    return res.json({ success: true, data: currentDevice });
+  }
+  const config = activeDeviceConfig || loadDeviceConfig();
   if (!config || !config.ipAddress) {
     return res.status(400).json({ success: false, error: 'No saved device config. Use Developer settings to set the IP first.' });
   }
