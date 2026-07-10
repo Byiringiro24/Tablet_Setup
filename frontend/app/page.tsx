@@ -236,6 +236,19 @@ export default function SmartAttendanceDashboard() {
       } catch { /* ignore parse errors */ }
     });
 
+    es.addEventListener("deviceStatus", (e) => {
+      try {
+        const status = JSON.parse((e as MessageEvent).data);
+        if (status?.connected === false) {
+          setDevice(null);
+          setConnectStatus("retrying");
+          toast.error("Device went offline — reconnecting...", { id: "ac" });
+          if (autoConnectRef.current) clearTimeout(autoConnectRef.current);
+          attemptConnect(0);
+        }
+      } catch { /* ignore */ }
+    });
+
     es.onerror = () => {
       es.close();
       sseRef.current = null;

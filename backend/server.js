@@ -66,30 +66,54 @@ function stopLogPoll() {
 
 async function runLogPoll() {
   if (!currentDevice || !currentDevice.connected) return;
-  if (pollBusy) return;   // skip this tick if previous poll is still running
+  if (pollBusy) return;
   pollBusy = true;
   try {
     const result = await sendCommand('GET_LOGS|0', 8000);
-    if (!result.success) { pollBusy = false; return; }
+    if (!result.success) {
+      pollBusy = false;
+      // If command failed with a connection-type error, device is offline
+      const err = (result.error || '').toLowerCase();
+      if (err.includes('not reachable') || err.includes('disconnect') || err.includes('timeout') || err.includes('bridge stopped')) {
+        console.log('Log poll: device offline detected — triggering reconnect');
+        currentDevice = null;
+        stopLogPoll();
+        sseEmit('deviceStatus', { connected: false });
+        if (autoConnectEnabled) scheduleAutoConnect(3000);
+      }
+      return;
+    }
     const rawLogs = Array.isArray(result.data?.logs) ? result.data.logs : [];
-    const mapped = rawLogs.map(attendanceFromLog);
 
     // On first poll after connect, seed ALL existing logs — never flash old attendance
-    if (seenLogIds.size === 0 && mapped.length > 0) {
-      mapped.forEach((l) => seenLogIds.add(l.id));
+    if (seenLogIds.size === 0 && rawLogs.length > 0) {
+      const getLogKey = (raw) => raw.id || `${raw.userId}-${raw.timestamp}`;
+      rawLogs.forEach((raw) => seenLogIds.add(getLogKey(raw)));
       logsCache = rawLogs;
-      sseEmit('init', mapped);
-      console.log(`Log poll: seeded ${mapped.length} existing log(s) — no flash`);
+      // Pull users then emit init with resolved names for sidebar
+      await refreshUsersCache().catch(() => null);
+      sseEmit('init', rawLogs.map(attendanceFromLog));
+      console.log(`Log poll: seeded ${rawLogs.length} existing log(s) — no flash`);
       pollBusy = false;
       return;
     }
 
-    const fresh = mapped.filter((l) => !seenLogIds.has(l.id));
-    fresh.forEach((l) => seenLogIds.add(l.id));
+    // Find fresh raw logs (not yet seen)
+    // Use a composite key: userId + timestamp as stable dedup key if log.id is absent
+    const getLogKey = (raw) => raw.id || `${raw.userId}-${raw.timestamp}`;
+    const freshRaw = rawLogs.filter((raw) => !seenLogIds.has(getLogKey(raw)));
+    freshRaw.forEach((raw) => seenLogIds.add(getLogKey(raw)));
     logsCache = rawLogs;
-    if (fresh.length > 0) {
-      console.log(`Log poll: ${fresh.length} new attendance record(s)`);
-      sseEmit('attendance', fresh);
+
+    if (freshRaw.length > 0) {
+      console.log(`Log poll: ${freshRaw.length} new attendance record(s)`);
+      // If usersCache is empty, pull users now so names resolve before we emit
+      if (usersCache.length === 0) {
+        await refreshUsersCache().catch(() => null);
+      }
+      // Map with latest usersCache so studentName is a real name, not a device ID
+      const freshMapped = freshRaw.map(attendanceFromLog);
+      sseEmit('attendance', freshMapped);
     }
   } catch (err) {
     // silent — device may be briefly busy
@@ -230,6 +254,7 @@ async function runAutoConnect() {
       currentDevice = result.data;
       autoConnectAttempt = 0;
       console.log(`Auto-connect: connected successfully to ${ipAddress}`);
+      refreshUsersCache().catch(() => null); // pull users so names resolve immediately
       startLogPoll();
       // Keep polling to detect disconnection
       scheduleAutoConnect(15000);
@@ -451,11 +476,12 @@ function attendanceFromLog(log) {
   const student = getStudentForDeviceUser(log.userId);
   const deviceUser = usersCache.find((item) => item.userId === log.userId);
   const resolved = resolveAttendanceStatus(log);
+  const stableId = log.id || `${log.userId}-${log.timestamp}`;
   return {
-    id: log.id,
+    id: stableId,
     studentId: student?.studentId || `RW-${log.userId}`,
     studentDeviceId: log.userId,
-    studentName: student?.name || deviceUser?.name || log.userId,
+    studentName: student?.name || deviceUser?.name || `User ${log.userId}`,
     className: student?.className || '',
     section: student?.section || '',
     deviceId: currentDevice?.deviceId || currentDevice?.ipAddress || 'FK_DEVICE',
@@ -552,6 +578,7 @@ app.post('/api/device/connect', async (req, res) => {
   if (result.success) {
     currentDevice = result.data;
     autoConnectAttempt = 0;
+    refreshUsersCache().catch(() => null);
     startLogPoll();
     scheduleAutoConnect(15000);
   }
@@ -578,6 +605,7 @@ app.post('/api/device/connect-saved', async (req, res) => {
   if (result.success) {
     currentDevice = result.data;
     autoConnectAttempt = 0;
+    refreshUsersCache().catch(() => null);
     startLogPoll();
     scheduleAutoConnect(15000);
   }
@@ -603,7 +631,14 @@ app.post('/api/device/reconnect', (req, res) => {
 
 app.get('/api/device/status', async (req, res) => {
   const result = await sendCommand('STATUS', 5000);
-  if (result.success) currentDevice = result.data;
+  if (result.success) {
+    currentDevice = result.data;
+  } else {
+    // STATUS failed — device is offline, clear it so frontend shows disconnected
+    currentDevice = null;
+    stopLogPoll();
+    if (autoConnectEnabled) scheduleAutoConnect(3000);
+  }
   apiResult(res, result);
 });
 
