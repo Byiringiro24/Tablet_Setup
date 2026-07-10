@@ -462,7 +462,8 @@ async function refreshUsersCache() {
 }
 
 app.get('/api/health', async (req, res) => {
-  res.json({ status: 'ok', bridgeRunning: bridgeProcess !== null, bridgeReady, device: currentDevice, autoConnect: { enabled: autoConnectEnabled, attempt: autoConnectAttempt } });
+  const savedConfig = loadDeviceConfig();
+  res.json({ status: 'ok', bridgeRunning: bridgeProcess !== null, bridgeReady, device: currentDevice, autoConnect: { enabled: autoConnectEnabled, attempt: autoConnectAttempt }, savedConfig });
 });
 
 // Server-Sent Events — frontend subscribes here for real-time attendance updates

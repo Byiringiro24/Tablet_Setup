@@ -121,10 +121,32 @@ export default function SmartAttendanceDashboard() {
   const [readMode, setReadMode]     = useState(0);
   const [activeView, setActiveView] = useState<NavView>("dashboard");
 
-  /* ── device form ── */
+  /* ── device form — loaded from backend saved config on mount ── */
   const [deviceForm, setDeviceForm] = useState({ deviceId: "DV-KGL-01", ipAddress: "10.23.194.16", port: 5005, license: 1261, location: "Main Gate" });
   const deviceFormRef = useRef(deviceForm);
   useEffect(() => { deviceFormRef.current = deviceForm; }, [deviceForm]);
+
+  // On mount, load the saved device config from the backend so we always use the right IP
+  useEffect(() => {
+    fetch("http://localhost:5000/api/health")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.savedConfig?.ipAddress) {
+          const saved = data.savedConfig;
+          const updated = {
+            deviceId: saved.deviceId || "DV-KGL-01",
+            ipAddress: saved.ipAddress,
+            port: saved.port || 5005,
+            license: saved.license || 1261,
+            location: saved.location || "Main Gate",
+          };
+          setDeviceForm(updated);
+          deviceFormRef.current = updated;
+        }
+      })
+      .catch(() => { /* use defaults if backend not ready */ });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* ── student form ── */
   const [studentForm, setStudentForm] = useState({ name: "", studentId: "RW-", studentDeviceId: "", className: "S1", section: "A", assignedDeviceId: "DV-KGL-01", parentPhone: "" });
