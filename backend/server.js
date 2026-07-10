@@ -57,22 +57,30 @@ function startLogPoll() {
 
 function stopLogPoll() {
   if (logPollTimer) { clearInterval(logPollTimer); logPollTimer = null; }
+  seenLogIds.clear(); // reset so next connect re-seeds without flashing old logs
 }
 
 async function runLogPoll() {
   if (!currentDevice || !currentDevice.connected) return;
   try {
-    // GET_LOGS|0 = all logs (we diff by id ourselves)
     const result = await sendCommand('GET_LOGS|0', 8000);
     if (!result.success) return;
     const rawLogs = result.data.logs || [];
     const mapped = rawLogs.map(attendanceFromLog);
-    // Find logs we haven't seen yet
+
+    // On first poll after connect, seed ALL existing logs as seen — never flash old attendance
+    if (seenLogIds.size === 0 && mapped.length > 0) {
+      mapped.forEach((l) => seenLogIds.add(l.id));
+      logsCache = rawLogs;
+      // Send to sidebar only (init event, no flash)
+      sseEmit('init', mapped);
+      console.log(`Log poll: seeded ${mapped.length} existing log(s) — no flash`);
+      return;
+    }
+
     const fresh = mapped.filter((l) => !seenLogIds.has(l.id));
     fresh.forEach((l) => seenLogIds.add(l.id));
-    // Update global cache
     logsCache = rawLogs;
-    // Push fresh logs to all SSE clients
     if (fresh.length > 0) {
       console.log(`Log poll: ${fresh.length} new attendance record(s)`);
       sseEmit('attendance', fresh);
@@ -487,9 +495,10 @@ app.get('/api/events', (req, res) => {
     try { res.write(': heartbeat\n\n'); } catch { /* client gone */ }
   }, 20000);
 
-  // Send current log cache immediately on connect so the client is up to date
+  // Send current log cache immediately on connect — seed seenLogIds so they're never treated as fresh
   const current = logsCache.map(attendanceFromLog);
   current.forEach((l) => seenLogIds.add(l.id));
+  // Send to frontend as init (sidebar logs only, no flash)
   res.write(`event: init\ndata: ${JSON.stringify(current)}\n\n`);
 
   sseClients.add(res);

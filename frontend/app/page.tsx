@@ -348,7 +348,24 @@ export default function SmartAttendanceDashboard() {
   const [showDevPassword,  setShowDevPassword]  = useState(false);
   const [devForm,          setDevForm]          = useState({ ...deviceForm });
 
-  const openDevModal  = () => { setDevPassword(""); setDevPasswordError(""); setShowDevPassword(false); setDevForm({ ...deviceForm }); setDevStep("password"); };
+  const openDevModal = () => {
+    setDevPassword(""); setDevPasswordError(""); setShowDevPassword(false);
+    // Always populate devForm from the live saved config
+    fetch("http://localhost:5000/api/health")
+      .then((r) => r.json())
+      .then((data) => {
+        const saved = data?.savedConfig;
+        setDevForm({
+          deviceId: saved?.deviceId || deviceForm.deviceId,
+          ipAddress: saved?.ipAddress || deviceForm.ipAddress,
+          port: saved?.port || deviceForm.port,
+          license: saved?.license || deviceForm.license,
+          location: saved?.location || deviceForm.location,
+        });
+      })
+      .catch(() => setDevForm({ ...deviceForm }));
+    setDevStep("password");
+  };
   const closeDevModal = () => { setDevStep("closed"); setDevPassword(""); setDevPasswordError(""); };
 
   function submitDevPassword(e: FormEvent) {
@@ -359,24 +376,29 @@ export default function SmartAttendanceDashboard() {
 
   function saveDevSettings(e: FormEvent) {
     e.preventDefault();
-    setDeviceForm({ ...devForm });
+    // Capture form values at submit time — don't rely on state which may not have flushed
+    const newConfig = { ...devForm };
+    setDeviceForm(newConfig);
+    deviceFormRef.current = newConfig;
     closeDevModal();
-    toast.success("Settings saved — reconnecting…");
+    toast.loading("Saving settings & reconnecting…", { id: "ac" });
     if (autoConnectRef.current) clearTimeout(autoConnectRef.current);
-    // Save and connect with the new values (this is the only place we call connect with explicit values)
-    deviceApi.connect({ ...devForm, timeoutMs: 3000, saveConfig: true })
+    // Pass saveConfig:true so backend saves + updates activeDeviceConfig in memory
+    deviceApi.connect({ ...newConfig, timeoutMs: 10000, saveConfig: true })
       .then((res) => {
+        if (!mountedRef.current) return;
         setDevice(res.data.data);
         setConnectStatus("connected");
-        toast.success("Device connected with new settings", { id: "ac" });
+        toast.success(`Connected to ${newConfig.ipAddress}`, { id: "ac" });
         refreshDashboard();
         scheduleReconnectCheck();
       })
       .catch(() => {
+        if (!mountedRef.current) return;
         setDevice(null);
         setConnectStatus("retrying");
-        toast.error("Connection failed with new settings — retrying...", { id: "ac" });
-        setTimeout(() => attemptConnect(0), 100);
+        toast.error(`Cannot reach ${newConfig.ipAddress} — retrying…`, { id: "ac" });
+        setTimeout(() => attemptConnect(0), 500);
       });
   }
 
