@@ -48,33 +48,39 @@ function sseEmit(event, data) {
 // Auto-log-poll state
 let logPollTimer = null;
 const seenLogIds = new Set();
+let pollBusy = false;   // prevent overlapping polls if device is slow
 
 function startLogPoll() {
   if (logPollTimer) return;
+  seenLogIds.clear();   // always reset on new connection so first poll seeds correctly
+  pollBusy = false;
   logPollTimer = setInterval(runLogPoll, 2000);
   console.log('Log auto-poll started (every 2s)');
 }
 
 function stopLogPoll() {
   if (logPollTimer) { clearInterval(logPollTimer); logPollTimer = null; }
-  seenLogIds.clear(); // reset so next connect re-seeds without flashing old logs
+  seenLogIds.clear();
+  pollBusy = false;
 }
 
 async function runLogPoll() {
   if (!currentDevice || !currentDevice.connected) return;
+  if (pollBusy) return;   // skip this tick if previous poll is still running
+  pollBusy = true;
   try {
     const result = await sendCommand('GET_LOGS|0', 8000);
-    if (!result.success) return;
-    const rawLogs = result.data.logs || [];
+    if (!result.success) { pollBusy = false; return; }
+    const rawLogs = Array.isArray(result.data?.logs) ? result.data.logs : [];
     const mapped = rawLogs.map(attendanceFromLog);
 
-    // On first poll after connect, seed ALL existing logs as seen — never flash old attendance
+    // On first poll after connect, seed ALL existing logs — never flash old attendance
     if (seenLogIds.size === 0 && mapped.length > 0) {
       mapped.forEach((l) => seenLogIds.add(l.id));
       logsCache = rawLogs;
-      // Send to sidebar only (init event, no flash)
       sseEmit('init', mapped);
       console.log(`Log poll: seeded ${mapped.length} existing log(s) — no flash`);
+      pollBusy = false;
       return;
     }
 
@@ -88,6 +94,7 @@ async function runLogPoll() {
   } catch (err) {
     // silent — device may be briefly busy
   }
+  pollBusy = false;
 }
 
 function loadStudents() {  
@@ -630,13 +637,14 @@ app.delete('/api/device/users/:id', async (req, res) => {
 app.post('/api/device/pull-logs', async (req, res) => {
   const readMark = req.body?.readMark === 1 || req.query.readMark === '1' ? 1 : 0;
   let result = await sendCommand(`GET_LOGS|${readMark}`, 90000);
-  if (result.success && (result.data.logs || []).length === 0 && readMark === 1) {
+  if (result.success && (result.data?.logs || []).length === 0 && readMark === 1) {
     result = await sendCommand('GET_LOGS|0', 90000);
   }
   if (result.success) {
-    logsCache = result.data.logs || [];
+    const newLogs = Array.isArray(result.data?.logs) ? result.data.logs : [];
+    logsCache = newLogs;
     // Seed seen IDs so auto-poll doesn't re-fire these as new
-    logsCache.map(attendanceFromLog).forEach((l) => seenLogIds.add(l.id));
+    newLogs.map(attendanceFromLog).forEach((l) => seenLogIds.add(l.id));
   }
   apiResult(res, result);
 });
