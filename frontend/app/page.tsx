@@ -835,10 +835,10 @@ function LiveAttendanceScreen({ log, onDismiss }: { log: AttendanceLog; onDismis
 
         {/* Student info */}
         <div className="text-center">
-          <p className="text-4xl font-extrabold tracking-tight text-white">{log.studentName}</p>
-          <p className="mt-2 text-lg text-slate-400">{log.studentId || log.studentDeviceId}</p>
+          <p className="text-5xl font-black tracking-tight text-white leading-tight">{log.studentName}</p>
+          <p className="mt-3 text-2xl font-bold text-cyan-400">{log.studentId || log.studentDeviceId}</p>
           {log.className && (
-            <p className="mt-1 text-slate-500">{log.className}{log.section ? ` · Section ${log.section}` : ""}</p>
+            <p className="mt-1.5 text-base text-slate-400">{log.className}{log.section ? ` · Section ${log.section}` : ""}</p>
           )}
         </div>
 
