@@ -1,0 +1,43 @@
+{
+  "morning": {
+    "name": "Morning Attendance",
+    "rules": [
+      {
+        "label": "Present",
+        "start": "07:00",
+        "end": "07:59"
+      },
+      {
+        "label": "Late",
+        "start": "08:00",
+        "end": "16:29"
+      },
+      {
+        "label": "Absent",
+        "start": "16:30",
+        "end": "04:59"
+      }
+    ]
+  },
+  "evening": {
+    "name": "Evening Attendance",
+    "rules": [
+      {
+        "label": "Leave on time",
+        "start": "14:30",
+        "end": "17:59"
+      },
+      {
+        "label": "Leave late",
+        "start": "18:00",
+        "end": "18:59"
+      },
+      {
+        "label": "Still at school",
+        "start": "19:00",
+        "end": "04:29"
+      }
+    ]
+  },
+  "updatedAt": "2026-05-30T12:29:27.229Z"
+}

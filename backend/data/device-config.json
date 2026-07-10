@@ -1,0 +1,9 @@
+{
+  "ipAddress": "10.23.194.16",
+  "port": 5005,
+  "license": 1261,
+  "deviceId": "DV-KGL-01",
+  "netPassword": 0,
+  "protocolType": -1,
+  "timeoutMs": 3000
+}
