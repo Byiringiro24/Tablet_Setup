@@ -205,11 +205,11 @@ async function runAutoConnect() {
     await ensureBridge();
     const { ipAddress, port = 5005, license = 1261, deviceId = '', netPassword = 0, protocolType = -1 } = config;
     const normalizedProtocol = protocolType === null || protocolType === undefined ? -1 : Number(protocolType);
-    // Use a short device timeout (3s) so failed attempts resolve quickly
-    const normalizedTimeout = 3000;
+    // Use timeout from saved config — longer timeout needed for first connect
+    const normalizedTimeout = Number(config.timeoutMs) > 0 ? Number(config.timeoutMs) : 10000;
     const result = await sendCommand(
       `CONNECT|${ipAddress}|${Number(port)}|${Number(license)}|${deviceId}|${Number(netPassword)}|${normalizedProtocol}|${normalizedTimeout}`,
-      8000
+      normalizedTimeout + 5000
     );
     if (result.success) {
       currentDevice = result.data;
@@ -524,7 +524,7 @@ app.post('/api/device/connect', async (req, res) => {
     // If there is already a saved config with a different IP, ignore the caller's IP and use the saved one
     const existing = loadDeviceConfig();
     if (existing && existing.ipAddress && existing.ipAddress !== targetAddress) {
-      console.log(`Connect request for ${targetAddress} ignored — saved config says ${existing.ipAddress}. Use Developer settings to change the device IP.`);
+      // Silently reject — don't log spam from stale browser requests
       return res.status(400).json({ success: false, error: `Device IP mismatch. Saved IP is ${existing.ipAddress}. Open Developer settings to update it.` });
     }
   }
@@ -548,11 +548,12 @@ app.post('/api/device/connect-saved', async (req, res) => {
   if (!config || !config.ipAddress) {
     return res.status(400).json({ success: false, error: 'No saved device config. Use Developer settings to set the IP first.' });
   }
-  const { ipAddress, port = 5005, license = 1261, deviceId = '', netPassword = 0, protocolType = -1 } = config;
+  const { ipAddress, port = 5005, license = 1261, deviceId = '', netPassword = 0, protocolType = -1, timeoutMs = 10000 } = config;
   const normalizedProtocol = protocolType === null || protocolType === undefined ? -1 : Number(protocolType);
+  const normalizedTimeout = Number(timeoutMs) > 0 ? Number(timeoutMs) : 10000;
   const result = await sendCommand(
-    `CONNECT|${ipAddress}|${Number(port)}|${Number(license)}|${deviceId}|${Number(netPassword)}|${normalizedProtocol}|3000`,
-    8000
+    `CONNECT|${ipAddress}|${Number(port)}|${Number(license)}|${deviceId}|${Number(netPassword)}|${normalizedProtocol}|${normalizedTimeout}`,
+    normalizedTimeout + 5000
   );
   if (result.success) {
     currentDevice = result.data;

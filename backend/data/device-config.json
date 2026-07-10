@@ -5,5 +5,5 @@
   "deviceId": "DV-KGL-01",
   "netPassword": 0,
   "protocolType": -1,
-  "timeoutMs": 3000
+  "timeoutMs": 10000
 }
