@@ -834,6 +834,234 @@ app.get('/api/attendance/today', (req, res) => {
   res.json({ success: true, summary: { total: todayLogs.length, checkIns: todayLogs.length, uniqueStudents: new Set(todayLogs.map((log) => log.studentDeviceId)).size } });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// WireGuard VPN Setup Endpoints
+// These run PowerShell on the Windows tablet so the super admin can set up
+// the VPN tunnel from a web browser without touching a terminal.
+//
+// Flow:
+//   1. GET  /api/wireguard/status       → check if WireGuard is installed & tunnel state
+//   2. POST /api/wireguard/generate-keys → generate a new private+public key pair
+//   3. POST /api/wireguard/install       → write the tunnel config and activate it
+//   4. GET  /api/wireguard/status        → verify tunnel is Active
+// ─────────────────────────────────────────────────────────────────────────────
+
+const { execFile } = require('child_process');
+const os = require('os');
+const fsSync = require('fs');
+
+const WG_EXE = 'C:\\Program Files\\WireGuard\\wg.exe';
+const WIREGUARD_TUNNEL_NAME = 'EcareAfrica';
+// WireGuard stores tunnel configs here on Windows
+const WG_TUNNEL_DIR = `${process.env.PROGRAMDATA || 'C:\\ProgramData'}\\WireGuard`;
+
+function runPS(script, timeoutMs = 15000) {
+  return new Promise((resolve, reject) => {
+    // Run PowerShell with -NoProfile -NonInteractive so it never hangs waiting for input
+    const ps = execFile(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-Command', script],
+      { timeout: timeoutMs, windowsHide: true },
+      (err, stdout, stderr) => {
+        if (err) return reject(new Error(stderr?.trim() || err.message));
+        resolve(stdout.trim());
+      }
+    );
+  });
+}
+
+function runWg(...args) {
+  return new Promise((resolve, reject) => {
+    execFile(WG_EXE, args, { timeout: 10000, windowsHide: true }, (err, stdout, stderr) => {
+      if (err) return reject(new Error(stderr?.trim() || err.message));
+      resolve(stdout.trim());
+    });
+  });
+}
+
+// GET /api/wireguard/status
+// Returns: installed, tunnelActive, tunnelName, vpnIp, publicKey (if keys exist)
+app.get('/api/wireguard/status', async (req, res) => {
+  const installed = fsSync.existsSync(WG_EXE);
+  let tunnelActive = false;
+  let vpnIp = null;
+  let publicKey = null;
+  let lastHandshake = null;
+
+  if (installed) {
+    try {
+      // Check if our tunnel is active via `wg show`
+      const show = await runWg('show', WIREGUARD_TUNNEL_NAME).catch(() => '');
+      if (show.includes('interface:')) {
+        tunnelActive = true;
+        // Extract VPN IP
+        const ipMatch = show.match(/address:\s+([\d.]+)/i)
+          || show.match(/allowed ips:\s+([\d.]+)/i);
+        if (ipMatch) vpnIp = ipMatch[1];
+        // Extract latest handshake
+        const hsMatch = show.match(/latest handshake:\s+(.+)/i);
+        if (hsMatch) lastHandshake = hsMatch[1].trim();
+      }
+    } catch { /* tunnel doesn't exist yet */ }
+
+    // Try to read saved public key
+    try {
+      const keyFile = path.join(__dirname, 'data', 'wireguard-public.key');
+      if (fsSync.existsSync(keyFile)) {
+        publicKey = fsSync.readFileSync(keyFile, 'utf8').trim();
+      }
+    } catch { /* no saved key */ }
+  }
+
+  res.json({
+    success: true,
+    installed,
+    tunnelActive,
+    tunnelName: WIREGUARD_TUNNEL_NAME,
+    vpnIp,
+    publicKey,
+    lastHandshake,
+    wgPath: WG_EXE,
+  });
+});
+
+// POST /api/wireguard/generate-keys
+// Generates a new WireGuard key pair on the tablet.
+// Returns: { privateKey, publicKey }
+// The super admin copies the publicKey and pastes it into the server web UI.
+app.post('/api/wireguard/generate-keys', async (req, res) => {
+  if (!fsSync.existsSync(WG_EXE)) {
+    return res.status(400).json({
+      success: false,
+      error: 'WireGuard is not installed. Download from https://www.wireguard.com/install/ and install it first.',
+      downloadUrl: 'https://www.wireguard.com/install/',
+    });
+  }
+
+  try {
+    // Generate private key
+    const privateKey = await runWg('genkey');
+    // Derive public key from private key
+    const publicKey = await new Promise((resolve, reject) => {
+      const ps = execFile(
+        'powershell.exe',
+        ['-NoProfile', '-NonInteractive', '-Command',
+          `Write-Output '${privateKey}' | & '${WG_EXE}' pubkey`],
+        { timeout: 10000, windowsHide: true },
+        (err, stdout, stderr) => {
+          if (err) return reject(new Error(stderr?.trim() || err.message));
+          resolve(stdout.trim());
+        }
+      );
+    });
+
+    // Save keys to disk so they survive restarts
+    const keyDir = path.join(__dirname, 'data');
+    if (!fsSync.existsSync(keyDir)) fsSync.mkdirSync(keyDir, { recursive: true });
+    fsSync.writeFileSync(path.join(keyDir, 'wireguard-private.key'), privateKey, { mode: 0o600 });
+    fsSync.writeFileSync(path.join(keyDir, 'wireguard-public.key'), publicKey);
+
+    res.json({ success: true, privateKey, publicKey });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/wireguard/install
+// Installs and activates the WireGuard tunnel on the tablet.
+// Body: { serverPublicKey, serverEndpoint, vpnIp, dns? }
+// The super admin pastes the serverPublicKey (from the server web UI) and the assigned VPN IP.
+app.post('/api/wireguard/install', async (req, res) => {
+  const { serverPublicKey, serverEndpoint, vpnIp, dns = '1.1.1.1' } = req.body || {};
+
+  if (!serverPublicKey) return res.status(400).json({ success: false, error: 'serverPublicKey is required' });
+  if (!serverEndpoint)  return res.status(400).json({ success: false, error: 'serverEndpoint is required (e.g. 169.58.124.150:51820)' });
+  if (!vpnIp)           return res.status(400).json({ success: false, error: 'vpnIp is required (e.g. 10.0.0.2)' });
+
+  if (!fsSync.existsSync(WG_EXE)) {
+    return res.status(400).json({
+      success: false,
+      error: 'WireGuard is not installed.',
+      downloadUrl: 'https://www.wireguard.com/install/',
+    });
+  }
+
+  // Load saved private key
+  const privateKeyFile = path.join(__dirname, 'data', 'wireguard-private.key');
+  if (!fsSync.existsSync(privateKeyFile)) {
+    return res.status(400).json({
+      success: false,
+      error: 'No private key found. Generate keys first using the Generate Keys step.',
+    });
+  }
+  const privateKey = fsSync.readFileSync(privateKeyFile, 'utf8').trim();
+
+  // Build the WireGuard config
+  const confContent = [
+    '[Interface]',
+    `PrivateKey = ${privateKey}`,
+    `Address = ${vpnIp}/24`,
+    `DNS = ${dns}`,
+    '',
+    '[Peer]',
+    `PublicKey = ${serverPublicKey}`,
+    `AllowedIPs = 10.0.0.0/24`,
+    `Endpoint = ${serverEndpoint}`,
+    'PersistentKeepalive = 25',
+  ].join('\r\n');
+
+  // Write config to WireGuard tunnel directory
+  const confPath = path.join(WG_TUNNEL_DIR, `${WIREGUARD_TUNNEL_NAME}.conf`);
+  try {
+    if (!fsSync.existsSync(WG_TUNNEL_DIR)) fsSync.mkdirSync(WG_TUNNEL_DIR, { recursive: true });
+    fsSync.writeFileSync(confPath, confContent, 'utf8');
+  } catch (err) {
+    return res.status(500).json({ success: false, error: `Failed to write config: ${err.message}. Run the bridge as Administrator.` });
+  }
+
+  // Install tunnel via WireGuard CLI (requires admin — the bridge should run as admin)
+  try {
+    // Remove existing tunnel if present
+    await runPS(`& '${WG_EXE.replace(/'/g, "''")}' /uninstalltunnelservice ${WIREGUARD_TUNNEL_NAME}`)
+      .catch(() => null); // ignore error if tunnel didn't exist
+
+    // Install & start the tunnel service
+    await runPS(`& 'C:\\Program Files\\WireGuard\\wireguard.exe' /installtunnelservice '${confPath.replace(/'/g, "''")}'`);
+
+    // Give it 3s to establish
+    await new Promise(r => setTimeout(r, 3000));
+
+    // Verify
+    const show = await runWg('show', WIREGUARD_TUNNEL_NAME).catch(() => '');
+    const active = show.includes('interface:') || show.includes('listening port');
+
+    res.json({
+      success: true,
+      tunnelActive: active,
+      vpnIp,
+      message: active
+        ? `WireGuard tunnel "${WIREGUARD_TUNNEL_NAME}" is active on ${vpnIp}`
+        : `Tunnel installed but handshake pending — make sure the server added this tablet as a peer first`,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: `Failed to install tunnel: ${err.message}. Make sure WireGuard is installed and the bridge is running as Administrator.`,
+    });
+  }
+});
+
+// POST /api/wireguard/deactivate
+// Removes the tunnel service (stops VPN).
+app.post('/api/wireguard/deactivate', async (req, res) => {
+  try {
+    await runPS(`& 'C:\\Program Files\\WireGuard\\wireguard.exe' /uninstalltunnelservice ${WIREGUARD_TUNNEL_NAME}`);
+    res.json({ success: true, message: 'WireGuard tunnel stopped' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 const PORT = Number(process.env.PORT || 5000);
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`FK Attendance Backend running on http://localhost:${PORT}`);
