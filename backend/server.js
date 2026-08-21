@@ -304,6 +304,11 @@ function saveStudents() {
 
 function startBridge() {
   if (bridgeProcess) return;
+  if (!fs.existsSync(bridgePath)) {
+    console.warn('FKBridge.exe not found at:', bridgePath);
+    console.warn('Bridge features disabled — WireGuard VPN setup endpoints are still available.');
+    return;
+  }
   console.log('Starting FK bridge:', bridgePath);
   bridgeReady = false;
   bridgeProcess = spawn(bridgePath, [], { cwd: bridgeDir, windowsHide: true });
