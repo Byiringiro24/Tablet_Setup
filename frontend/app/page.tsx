@@ -7,9 +7,10 @@ import {
   FiDatabase, FiDownloadCloud, FiEye, FiEyeOff, FiLock,
   FiRefreshCw, FiServer, FiSettings, FiShield, FiUploadCloud,
   FiUsers, FiWifi, FiWifiOff, FiLoader, FiX, FiChevronRight,
-  FiChevronsLeft, FiUserCheck, FiArrowLeft,
+  FiChevronsLeft, FiUserCheck, FiArrowLeft, FiCopy, FiTerminal,
+  FiAlertTriangle, FiExternalLink,
 } from "react-icons/fi";
-import { dashboardApi, deviceApi, studentApi } from "@/lib/api";
+import { dashboardApi, deviceApi, studentApi, wireguardApi } from "@/lib/api";
 
 const DEV_PASSWORD = "admin1234";
 
@@ -355,11 +356,24 @@ export default function SmartAttendanceDashboard() {
   const connected = Boolean(device?.connected);
 
   /* ── developer modal ── */
-  const [devStep,          setDevStep]         = useState<"closed"|"password"|"settings">("closed");
+  const [devStep,          setDevStep]         = useState<"closed"|"password"|"settings"|"wireguard">("closed");
   const [devPassword,      setDevPassword]      = useState("");
   const [devPasswordError, setDevPasswordError] = useState("");
   const [showDevPassword,  setShowDevPassword]  = useState(false);
   const [devForm,          setDevForm]          = useState({ ...deviceForm });
+
+  /* ── wireguard wizard ── */
+  type WgStatus = { installed: boolean; tunnelActive: boolean; vpnIp: string|null; publicKey: string|null; lastHandshake: string|null };
+  const [wgStatus,     setWgStatus]     = useState<WgStatus|null>(null);
+  const [wgStep,       setWgStep]       = useState<1|2|3|4|5>(1);
+  const [wgBusy,       setWgBusy]       = useState(false);
+  const [wgError,      setWgError]      = useState("");
+  const [wgKeys,       setWgKeys]       = useState<{privateKey:string;publicKey:string}|null>(null);
+  const [wgForm,       setWgForm]       = useState({ serverPublicKey: "", serverEndpoint: "169.58.124.150:51820", vpnIp: "10.0.0.2", dns: "1.1.1.1" });
+  const [wgPingTarget, setWgPingTarget] = useState("10.0.0.1");
+  const [wgPingResult, setWgPingResult] = useState<{success:boolean;output:string}|null>(null);
+  const [wgInstalled,  setWgInstalled]  = useState(false);
+  const [copiedKey,    setCopiedKey]    = useState(false);
 
   const openDevModal = () => {
     setDevPassword(""); setDevPasswordError(""); setShowDevPassword(false);
@@ -413,6 +427,103 @@ export default function SmartAttendanceDashboard() {
         toast.error(`Cannot reach ${newConfig.ipAddress} — retrying…`, { id: "ac" });
         setTimeout(() => attemptConnect(0), 500);
       });
+  }
+
+  /* ── WireGuard wizard helpers ── */
+  async function openWgWizard() {
+    setWgError("");
+    setWgPingResult(null);
+    setWgBusy(true);
+    try {
+      const r = await wireguardApi.getStatus();
+      const s = r.data as WgStatus & { installed: boolean };
+      setWgStatus(s);
+      setWgInstalled(s.installed);
+      // If keys already saved on backend, skip to step 3
+      if (s.publicKey) {
+        setWgKeys({ privateKey: "••••••••••••••••••••••••••••••••••••••••••••", publicKey: s.publicKey });
+        setWgStep(s.tunnelActive ? 4 : 3);
+      } else if (s.installed) {
+        setWgStep(2);
+      } else {
+        setWgStep(1);
+      }
+    } catch {
+      setWgStep(1);
+      setWgInstalled(false);
+    }
+    setWgBusy(false);
+    setDevStep("wireguard");
+  }
+
+  async function wgRefreshStatus() {
+    try {
+      const r = await wireguardApi.getStatus();
+      setWgStatus(r.data as WgStatus & { installed: boolean });
+      setWgInstalled((r.data as any).installed);
+    } catch { /* ignore */ }
+  }
+
+  async function wgGenerateKeys() {
+    setWgBusy(true); setWgError("");
+    try {
+      const r = await wireguardApi.generateKeys();
+      setWgKeys(r.data);
+      setWgStep(3);
+    } catch (e: any) {
+      setWgError(e?.response?.data?.error || e.message || "Failed to generate keys");
+    }
+    setWgBusy(false);
+  }
+
+  async function wgInstall() {
+    if (!wgForm.serverPublicKey.trim()) { setWgError("Paste the server public key first."); return; }
+    if (!wgForm.serverEndpoint.trim())  { setWgError("Server endpoint is required."); return; }
+    if (!wgForm.vpnIp.trim())           { setWgError("VPN IP for this tablet is required."); return; }
+    setWgBusy(true); setWgError("");
+    try {
+      const r = await wireguardApi.install(wgForm);
+      await wgRefreshStatus();
+      setWgStep(4);
+      toast.success(r.data.message || "Tunnel activated");
+    } catch (e: any) {
+      setWgError(e?.response?.data?.error || e.message || "Installation failed");
+    }
+    setWgBusy(false);
+  }
+
+  async function wgDeactivate() {
+    setWgBusy(true); setWgError("");
+    try {
+      await wireguardApi.deactivate();
+      await wgRefreshStatus();
+      toast.success("WireGuard tunnel stopped");
+    } catch (e: any) {
+      setWgError(e?.response?.data?.error || e.message || "Failed to deactivate");
+    }
+    setWgBusy(false);
+  }
+
+  async function wgPing() {
+    setWgBusy(true); setWgPingResult(null); setWgError("");
+    try {
+      const r = await fetch(`http://localhost:5000/api/wireguard/ping`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target: wgPingTarget }),
+      });
+      const data = await r.json();
+      setWgPingResult(data);
+    } catch (e: any) {
+      setWgPingResult({ success: false, output: e.message });
+    }
+    setWgBusy(false);
+  }
+
+  function copyToClipboard(text: string) {
+    navigator.clipboard.writeText(text).catch(() => {});
+    setCopiedKey(true);
+    setTimeout(() => setCopiedKey(false), 2000);
   }
 
   /* ── data actions ── */
@@ -608,11 +719,16 @@ export default function SmartAttendanceDashboard() {
           )}
 
           {/* Developer button */}
-          <div className="mt-3 border-t border-slate-800 pt-3">
+          <div className="mt-3 border-t border-slate-800 pt-3 space-y-1">
             <button type="button" onClick={openDevModal}
               className="group flex w-full items-center gap-2 rounded-xl border border-slate-700/40 bg-slate-800/30 px-3 py-1.5 text-slate-600 transition-all duration-300 hover:border-amber-500/40 hover:bg-amber-500/10 hover:py-3 hover:text-amber-300">
               <FiSettings className="shrink-0 text-sm transition-transform duration-300 group-hover:rotate-45 group-hover:text-base" />
               <span className="text-[11px] font-medium transition-all duration-300 group-hover:text-xs">Developer</span>
+            </button>
+            <button type="button" onClick={openWgWizard}
+              className="group flex w-full items-center gap-2 rounded-xl border border-slate-700/40 bg-slate-800/30 px-3 py-1.5 text-slate-600 transition-all duration-300 hover:border-cyan-500/40 hover:bg-cyan-500/10 hover:py-3 hover:text-cyan-300">
+              <FiShield className="shrink-0 text-sm transition-transform duration-300 group-hover:text-base" />
+              <span className="text-[11px] font-medium transition-all duration-300 group-hover:text-xs">WireGuard VPN</span>
             </button>
           </div>
         </div>
@@ -777,6 +893,426 @@ export default function SmartAttendanceDashboard() {
                 <button type="button" onClick={closeDevModal} className="secondary-action flex-1 py-3">Cancel</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════ WIREGUARD VPN WIZARD MODAL ══════════ */}
+      {devStep === "wireguard" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-2xl rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl flex flex-col max-h-[90vh]">
+
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-800 px-8 pt-7 pb-5 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="rounded-xl bg-cyan-500/15 p-3 text-cyan-400"><FiShield className="text-xl" /></div>
+                <div>
+                  <h2 className="text-xl font-bold">WireGuard VPN Setup</h2>
+                  <p className="text-sm text-slate-400">Secure tunnel: Tablet ↔ Server (169.58.124.150)</p>
+                </div>
+              </div>
+              <button type="button" onClick={closeDevModal} className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white"><FiX /></button>
+            </div>
+
+            {/* Step indicator */}
+            <div className="flex items-center gap-0 px-8 py-4 shrink-0 border-b border-slate-800">
+              {([
+                { n: 1, label: "Install" },
+                { n: 2, label: "Keys" },
+                { n: 3, label: "Configure" },
+                { n: 4, label: "Activate" },
+                { n: 5, label: "Ping Test" },
+              ] as { n: 1|2|3|4|5; label: string }[]).map((s, i) => (
+                <div key={s.n} className="flex items-center flex-1 min-w-0">
+                  <button
+                    onClick={() => { setWgError(""); setWgStep(s.n); }}
+                    className={`flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-semibold transition whitespace-nowrap
+                      ${wgStep === s.n ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40" :
+                        s.n < wgStep ? "text-emerald-400" : "text-slate-600 hover:text-slate-400"}`}
+                  >
+                    <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold shrink-0
+                      ${wgStep === s.n ? "bg-cyan-500 text-slate-900" :
+                        s.n < wgStep ? "bg-emerald-500 text-slate-900" : "bg-slate-700 text-slate-400"}`}>
+                      {s.n < wgStep ? "✓" : s.n}
+                    </span>
+                    {s.label}
+                  </button>
+                  {i < 4 && <div className={`h-px flex-1 mx-1 ${s.n < wgStep ? "bg-emerald-500/40" : "bg-slate-700"}`} />}
+                </div>
+              ))}
+            </div>
+
+            {/* Step content */}
+            <div className="flex-1 overflow-y-auto px-8 py-6 space-y-5">
+
+              {/* Error banner */}
+              {wgError && (
+                <div className="flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+                  <FiAlertTriangle className="mt-0.5 shrink-0" />
+                  <span>{wgError}</span>
+                </div>
+              )}
+
+              {/* ── STEP 1: Install ── */}
+              {wgStep === 1 && (
+                <div className="space-y-5">
+                  <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-5 space-y-3">
+                    <div className="flex items-center gap-2 text-base font-bold text-white">
+                      <FiDownloadCloud className="text-cyan-400" /> Install WireGuard on this Tablet
+                    </div>
+                    <p className="text-sm text-slate-400">WireGuard must be installed before we can generate keys or create a tunnel.</p>
+                    <div className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium ${wgInstalled ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30" : "bg-amber-500/15 text-amber-300 border border-amber-500/30"}`}>
+                      {wgInstalled ? <FiCheckCircle /> : <FiAlertTriangle />}
+                      {wgInstalled ? "WireGuard is installed on this tablet" : "WireGuard is NOT installed yet"}
+                    </div>
+                  </div>
+
+                  {!wgInstalled && (
+                    <div className="space-y-3">
+                      <p className="text-sm font-semibold text-slate-300">Follow these steps:</p>
+                      {[
+                        { n: "1", text: "Click the Download button below to open the WireGuard website.", action: (
+                          <a href="https://www.wireguard.com/install/" target="_blank" rel="noreferrer"
+                            className="flex items-center gap-2 rounded-xl bg-cyan-500 px-4 py-2.5 text-sm font-semibold text-slate-950 hover:bg-cyan-300 transition">
+                            <FiExternalLink /> Download WireGuard for Windows
+                          </a>
+                        )},
+                        { n: "2", text: "Run the installer (wireguard-installer.exe). Accept the UAC prompt." },
+                        { n: "3", text: 'After install completes, come back here and click "Check Again".' },
+                      ].map((step) => (
+                        <div key={step.n} className="rounded-xl border border-slate-700 bg-slate-800/40 p-4 space-y-2">
+                          <div className="flex items-center gap-2 text-sm font-semibold text-slate-200">
+                            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-cyan-500/20 text-cyan-300 text-xs font-bold shrink-0">{step.n}</span>
+                            {step.text}
+                          </div>
+                          {step.action && <div className="pl-8">{step.action}</div>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="flex gap-3">
+                    <button onClick={async () => { await wgRefreshStatus(); if (wgInstalled) setWgStep(2); }} disabled={wgBusy}
+                      className="secondary-action flex-1 py-2.5 text-sm">
+                      {wgBusy ? <><FiLoader className="animate-spin" /> Checking…</> : <><FiRefreshCw /> Check Again</>}
+                    </button>
+                    {wgInstalled && (
+                      <button onClick={() => setWgStep(2)} className="primary-action flex-1 py-2.5 text-sm">
+                        WireGuard is installed → Next <FiChevronRight />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ── STEP 2: Generate Keys ── */}
+              {wgStep === 2 && (
+                <div className="space-y-5">
+                  <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-5 space-y-2">
+                    <div className="flex items-center gap-2 text-base font-bold text-white">
+                      <FiLock className="text-cyan-400" /> Generate Tablet Key Pair
+                    </div>
+                    <p className="text-sm text-slate-400">
+                      This creates a private key (stays on the tablet) and a public key (you will paste this on the server).
+                      Keys are saved to <code className="text-cyan-400 text-xs">backend/data/wireguard-*.key</code>.
+                    </p>
+                    {wgStatus?.publicKey && (
+                      <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
+                        Keys already exist. You can regenerate them or reuse the existing public key below.
+                      </div>
+                    )}
+                  </div>
+
+                  {wgKeys && (
+                    <div className="space-y-3">
+                      <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-4 space-y-3">
+                        <div>
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Private Key (stays on tablet — never share)</p>
+                          <code className="block truncate rounded-lg bg-slate-900 px-3 py-2 text-xs text-red-300 font-mono border border-red-500/20">
+                            {wgKeys.privateKey === "••••••••••••••••••••••••••••••••••••••••••••" ? "••••••••••••••••••••••••••••••••••••••••••••" : wgKeys.privateKey}
+                          </code>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Public Key — copy and paste this on the server</p>
+                          <div className="flex items-center gap-2">
+                            <code className="flex-1 truncate rounded-lg bg-slate-900 px-3 py-2 text-xs text-cyan-300 font-mono border border-cyan-500/20">
+                              {wgKeys.publicKey}
+                            </code>
+                            <button onClick={() => copyToClipboard(wgKeys.publicKey)}
+                              className="shrink-0 flex items-center gap-1 rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-xs text-slate-300 hover:border-cyan-500 hover:text-cyan-300 transition">
+                              {copiedKey ? <FiCheckCircle className="text-emerald-400" /> : <FiCopy />}
+                              {copiedKey ? "Copied!" : "Copy"}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 space-y-2 text-sm text-amber-200">
+                        <p className="font-semibold flex items-center gap-2"><FiTerminal /> Now add this tablet as a peer on the server:</p>
+                        <p className="text-xs text-amber-300/80">SSH into <code className="text-amber-300">root@169.58.124.150</code> and run:</p>
+                        <pre className="rounded-lg bg-slate-900/80 p-3 text-xs text-emerald-300 font-mono overflow-x-auto whitespace-pre-wrap">{`wg set wg0 peer ${wgKeys.publicKey} \\
+  allowed-ips ${wgForm.vpnIp}/32
+
+# Make it persist across reboots:
+wg-quick save wg0`}</pre>
+                        <p className="text-xs text-amber-300/80 mt-2">Also get the server public key — run on the server:</p>
+                        <pre className="rounded-lg bg-slate-900/80 p-3 text-xs text-emerald-300 font-mono overflow-x-auto">{`cat /etc/wireguard/server_public.key`}</pre>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex gap-3">
+                    <button onClick={wgGenerateKeys} disabled={wgBusy}
+                      className="primary-action flex-1 py-2.5 text-sm">
+                      {wgBusy ? <><FiLoader className="animate-spin" /> Generating…</> : <><FiLock /> {wgKeys ? "Regenerate Keys" : "Generate Keys"}</>}
+                    </button>
+                    {wgKeys && (
+                      <button onClick={() => setWgStep(3)} className="secondary-action flex-1 py-2.5 text-sm">
+                        Next → Configure <FiChevronRight />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ── STEP 3: Configure ── */}
+              {wgStep === 3 && (
+                <div className="space-y-5">
+                  <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-5 space-y-2">
+                    <div className="flex items-center gap-2 text-base font-bold text-white">
+                      <FiSettings className="text-cyan-400" /> Configure Tunnel
+                    </div>
+                    <p className="text-sm text-slate-400">
+                      Paste the server public key and fill in the connection details. You get the server public key from the server command in Step 2.
+                    </p>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-slate-300">
+                        Server Public Key <span className="text-red-400">*</span>
+                      </label>
+                      <input type="text" value={wgForm.serverPublicKey}
+                        onChange={(e) => setWgForm({ ...wgForm, serverPublicKey: e.target.value.trim() })}
+                        placeholder="Paste server public key here (from /etc/wireguard/server_public.key)"
+                        className="form-field font-mono text-xs" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="mb-1.5 block text-sm font-medium text-slate-300">Server Endpoint <span className="text-red-400">*</span></label>
+                        <input type="text" value={wgForm.serverEndpoint}
+                          onChange={(e) => setWgForm({ ...wgForm, serverEndpoint: e.target.value.trim() })}
+                          placeholder="169.58.124.150:51820" className="form-field font-mono text-xs" />
+                        <p className="mt-1 text-xs text-slate-500">Server public IP and WireGuard port</p>
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-sm font-medium text-slate-300">Tablet VPN IP <span className="text-red-400">*</span></label>
+                        <input type="text" value={wgForm.vpnIp}
+                          onChange={(e) => setWgForm({ ...wgForm, vpnIp: e.target.value.trim() })}
+                          placeholder="10.0.0.2" className="form-field font-mono text-xs" />
+                        <p className="mt-1 text-xs text-slate-500">Assigned VPN IP for this tablet</p>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-slate-300">DNS Server</label>
+                      <input type="text" value={wgForm.dns}
+                        onChange={(e) => setWgForm({ ...wgForm, dns: e.target.value.trim() })}
+                        placeholder="1.1.1.1" className="form-field font-mono text-xs" />
+                    </div>
+                  </div>
+
+                  {/* Config preview */}
+                  <div className="rounded-xl border border-slate-700 bg-slate-900/80 p-4">
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Config Preview — EcareAfrica.conf</p>
+                    <pre className="text-xs font-mono text-emerald-300 whitespace-pre-wrap overflow-x-auto leading-relaxed">{`[Interface]
+PrivateKey = <saved on tablet>
+Address    = ${wgForm.vpnIp || "10.0.0.2"}/24
+DNS        = ${wgForm.dns || "1.1.1.1"}
+
+[Peer]
+PublicKey           = ${wgForm.serverPublicKey || "<paste server public key>"}
+AllowedIPs          = 10.0.0.0/24
+Endpoint            = ${wgForm.serverEndpoint || "169.58.124.150:51820"}
+PersistentKeepalive = 25`}</pre>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button onClick={() => setWgStep(2)} className="secondary-action py-2.5 text-sm px-5">← Back</button>
+                    <button onClick={wgInstall} disabled={wgBusy || !wgForm.serverPublicKey}
+                      className="primary-action flex-1 py-2.5 text-sm">
+                      {wgBusy ? <><FiLoader className="animate-spin" /> Installing…</> : <><FiWifi /> Save &amp; Activate Tunnel</>}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ── STEP 4: Status / Activate ── */}
+              {wgStep === 4 && (
+                <div className="space-y-5">
+                  <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-base font-bold text-white">
+                        <FiWifi className="text-cyan-400" /> Tunnel Status
+                      </div>
+                      <button onClick={wgRefreshStatus} disabled={wgBusy} className="secondary-action py-1.5 px-3 text-xs">
+                        <FiRefreshCw className={wgBusy ? "animate-spin" : ""} /> Refresh
+                      </button>
+                    </div>
+
+                    <div className={`flex items-center gap-3 rounded-xl border px-4 py-3
+                      ${wgStatus?.tunnelActive ? "border-emerald-500/30 bg-emerald-500/10" : "border-amber-500/30 bg-amber-500/10"}`}>
+                      <div className={`text-2xl ${wgStatus?.tunnelActive ? "text-emerald-400" : "text-amber-400"}`}>
+                        {wgStatus?.tunnelActive ? <FiCheckCircle /> : <FiWifiOff />}
+                      </div>
+                      <div>
+                        <p className={`font-bold ${wgStatus?.tunnelActive ? "text-emerald-300" : "text-amber-300"}`}>
+                          {wgStatus?.tunnelActive ? "Tunnel Active — EcareAfrica" : "Tunnel Inactive"}
+                        </p>
+                        {wgStatus?.vpnIp && <p className="text-xs text-slate-400">VPN IP: {wgStatus.vpnIp}</p>}
+                        {wgStatus?.lastHandshake && <p className="text-xs text-slate-400">Last handshake: {wgStatus.lastHandshake}</p>}
+                      </div>
+                    </div>
+
+                    {wgStatus?.publicKey && (
+                      <div>
+                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Tablet Public Key</p>
+                        <div className="flex items-center gap-2">
+                          <code className="flex-1 truncate rounded-lg bg-slate-900 px-3 py-2 text-xs text-cyan-300 font-mono border border-cyan-500/20">
+                            {wgStatus.publicKey}
+                          </code>
+                          <button onClick={() => copyToClipboard(wgStatus.publicKey!)}
+                            className="shrink-0 flex items-center gap-1 rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-xs text-slate-300 hover:border-cyan-500 hover:text-cyan-300 transition">
+                            {copiedKey ? <FiCheckCircle className="text-emerald-400" /> : <FiCopy />}
+                            {copiedKey ? "Copied!" : "Copy"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {!wgStatus?.tunnelActive && (
+                    <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200 space-y-2">
+                      <p className="font-semibold">Tunnel not active — possible causes:</p>
+                      <ul className="list-disc pl-5 space-y-1 text-xs text-amber-300/80">
+                        <li>The server hasn't added this tablet as a peer yet (do Step 2 server commands)</li>
+                        <li>Server firewall not open on UDP port 51820 — run: <code className="text-amber-300">ufw allow 51820/udp</code></li>
+                        <li>Backend is not running as Administrator (required by WireGuard on Windows)</li>
+                      </ul>
+                    </div>
+                  )}
+
+                  <div className="flex gap-3">
+                    {wgStatus?.tunnelActive ? (
+                      <>
+                        <button onClick={wgDeactivate} disabled={wgBusy}
+                          className="secondary-action flex-1 py-2.5 text-sm border-red-500/30 text-red-400 hover:border-red-400">
+                          {wgBusy ? <FiLoader className="animate-spin" /> : <FiWifiOff />} Stop Tunnel
+                        </button>
+                        <button onClick={() => { setWgStep(5); setWgPingResult(null); }}
+                          className="primary-action flex-1 py-2.5 text-sm">
+                          Test Connection → <FiChevronRight />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button onClick={() => setWgStep(3)} className="secondary-action flex-1 py-2.5 text-sm">← Re-configure</button>
+                        <button onClick={wgInstall} disabled={wgBusy || !wgForm.serverPublicKey}
+                          className="primary-action flex-1 py-2.5 text-sm">
+                          {wgBusy ? <><FiLoader className="animate-spin" /> Activating…</> : <><FiWifi /> Re-activate Tunnel</>}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ── STEP 5: Ping Test ── */}
+              {wgStep === 5 && (
+                <div className="space-y-5">
+                  <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-5 space-y-2">
+                    <div className="flex items-center gap-2 text-base font-bold text-white">
+                      <FiActivity className="text-cyan-400" /> Ping Test — Verify VPN Connectivity
+                    </div>
+                    <p className="text-sm text-slate-400">
+                      Ping the server through the WireGuard tunnel to confirm the connection is working.
+                      The server VPN IP is typically <code className="text-cyan-400">10.0.0.1</code>.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-slate-300">Target IP to ping</label>
+                      <div className="flex gap-2">
+                        <input type="text" value={wgPingTarget}
+                          onChange={(e) => setWgPingTarget(e.target.value.trim())}
+                          placeholder="10.0.0.1" className="form-field font-mono text-sm flex-1" />
+                        <button onClick={wgPing} disabled={wgBusy || !wgPingTarget}
+                          className="primary-action px-6 py-2.5 text-sm shrink-0">
+                          {wgBusy ? <><FiLoader className="animate-spin" /> Pinging…</> : <><FiActivity /> Ping</>}
+                        </button>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">Sends 4 ICMP packets via Windows ping command. Tunnel must be active.</p>
+                    </div>
+
+                    {wgPingResult && (
+                      <div className={`rounded-xl border p-4 space-y-2
+                        ${wgPingResult.success ? "border-emerald-500/30 bg-emerald-500/10" : "border-red-500/30 bg-red-500/10"}`}>
+                        <div className={`flex items-center gap-2 font-bold text-sm ${wgPingResult.success ? "text-emerald-300" : "text-red-300"}`}>
+                          {wgPingResult.success ? <FiCheckCircle /> : <FiAlertTriangle />}
+                          {wgPingResult.success
+                            ? `Ping successful — ${wgPingTarget} is reachable via VPN`
+                            : `Ping failed — ${wgPingTarget} did not respond`}
+                        </div>
+                        <pre className="rounded-lg bg-slate-900/80 p-3 text-xs font-mono text-slate-300 overflow-x-auto whitespace-pre-wrap max-h-48">
+                          {wgPingResult.output}
+                        </pre>
+                        {!wgPingResult.success && (
+                          <ul className="list-disc pl-5 text-xs text-red-300/80 space-y-1">
+                            <li>Confirm tunnel is Active in Step 4</li>
+                            <li>Server must have <code>allowed-ips = {wgForm.vpnIp}/32</code> for this tablet</li>
+                            <li>Open server firewall: <code>ufw allow 51820/udp</code></li>
+                            <li>Check server tunnel: <code>systemctl status wg-quick@wg0</code></li>
+                          </ul>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Server commands reference card */}
+                    <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-4 space-y-3">
+                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Server Commands Reference</p>
+                      <div className="space-y-2 text-xs">
+                        <div>
+                          <p className="text-slate-500 mb-1">Check tunnel status on server:</p>
+                          <pre className="rounded-lg bg-slate-900 p-2.5 text-emerald-300 font-mono">wg show</pre>
+                        </div>
+                        <div>
+                          <p className="text-slate-500 mb-1">Ping this tablet from the server:</p>
+                          <pre className="rounded-lg bg-slate-900 p-2.5 text-emerald-300 font-mono">{`ping ${wgForm.vpnIp || "10.0.0.2"}`}</pre>
+                        </div>
+                        <div>
+                          <p className="text-slate-500 mb-1">Add tablet as peer (if not done yet):</p>
+                          <pre className="rounded-lg bg-slate-900 p-2.5 text-emerald-300 font-mono overflow-x-auto whitespace-pre-wrap">{wgStatus?.publicKey
+                            ? `wg set wg0 peer ${wgStatus.publicKey} \\\n  allowed-ips ${wgForm.vpnIp || "10.0.0.2"}/32\nwg-quick save wg0`
+                            : `wg set wg0 peer <TABLET_PUBLIC_KEY> \\\n  allowed-ips ${wgForm.vpnIp || "10.0.0.2"}/32\nwg-quick save wg0`}</pre>
+                        </div>
+                        <div>
+                          <p className="text-slate-500 mb-1">Restart WireGuard on server:</p>
+                          <pre className="rounded-lg bg-slate-900 p-2.5 text-emerald-300 font-mono">systemctl restart wg-quick@wg0</pre>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button onClick={() => setWgStep(4)} className="secondary-action py-2.5 text-sm px-5">← Back</button>
+                    {wgPingResult?.success && (
+                      <div className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-sm font-semibold text-emerald-300">
+                        <FiCheckCircle /> VPN tunnel fully verified
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

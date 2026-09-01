@@ -1,5 +1,6 @@
 # Node
-node_modules/
+node_modules
+credentials.md/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -24,3 +25,7 @@ Thumbs.db
 
 # Data (runtime generated)
 backend/data/attendance.json
+
+# WireGuard private keys — NEVER commit these
+backend/data/wireguard-private.key
+credentials.md

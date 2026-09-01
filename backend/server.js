@@ -887,40 +887,62 @@ function runWg(...args) {
 // GET /api/wireguard/status
 // Returns: installed, tunnelActive, tunnelName, vpnIp, publicKey (if keys exist)
 app.get('/api/wireguard/status', async (req, res) => {
-  const installed = fsSync.existsSync(WG_EXE);
-  let tunnelActive = false;
-  let vpnIp = null;
-  let publicKey = null;
+  const wgExeExists  = fsSync.existsSync(WG_EXE);
+  const wguiExists   = fsSync.existsSync('C:\\Program Files\\WireGuard\\wireguard.exe');
+  const installed    = wgExeExists && wguiExists;
+
+  let tunnelActive  = false;
+  let vpnIp         = null;
+  let publicKey     = null;
   let lastHandshake = null;
+  let tunnelExists  = false;
 
   if (installed) {
     try {
-      // Check if our tunnel is active via `wg show`
-      const show = await runWg('show', WIREGUARD_TUNNEL_NAME).catch(() => '');
-      if (show.includes('interface:')) {
-        tunnelActive = true;
-        // Extract VPN IP
-        const ipMatch = show.match(/address:\s+([\d.]+)/i)
-          || show.match(/allowed ips:\s+([\d.]+)/i);
-        if (ipMatch) vpnIp = ipMatch[1];
-        // Extract latest handshake
-        const hsMatch = show.match(/latest handshake:\s+(.+)/i);
-        if (hsMatch) lastHandshake = hsMatch[1].trim();
+      // `wg show all` lists all active interfaces — safer than `wg show <name>` which errors when absent
+      const showAll = await runWg('show', 'all').catch(() => '');
+      if (showAll.includes(WIREGUARD_TUNNEL_NAME)) {
+        tunnelExists = true;
+        // Now get detail for our specific tunnel
+        const show = await runWg('show', WIREGUARD_TUNNEL_NAME).catch(() => '');
+        if (show.includes('interface:') || show.includes('listening port')) {
+          tunnelActive = true;
+          const ipMatch = show.match(/allowed ips:\s*([\d.]+)/i);
+          if (ipMatch) vpnIp = ipMatch[1];
+          const hsMatch = show.match(/latest handshake:\s*(.+)/i);
+          if (hsMatch) lastHandshake = hsMatch[1].trim();
+        }
       }
-    } catch { /* tunnel doesn't exist yet */ }
+    } catch { /* no active tunnels */ }
 
-    // Try to read saved public key
+    // Read saved public key from disk
     try {
       const keyFile = path.join(__dirname, 'data', 'wireguard-public.key');
       if (fsSync.existsSync(keyFile)) {
         publicKey = fsSync.readFileSync(keyFile, 'utf8').trim();
+        // Validate it looks like a real WireGuard key (44-char base64)
+        if (!/^[A-Za-z0-9+/]{43}=$/.test(publicKey)) publicKey = null;
       }
     } catch { /* no saved key */ }
+  }
+
+  // Also read VPN IP from saved config if tunnel active VPN IP not detected via wg show
+  if (!vpnIp && tunnelActive) {
+    try {
+      const confPath = path.join(WG_TUNNEL_DIR, `${WIREGUARD_TUNNEL_NAME}.conf`);
+      if (fsSync.existsSync(confPath)) {
+        const conf = fsSync.readFileSync(confPath, 'utf8');
+        const m = conf.match(/^Address\s*=\s*([\d.]+)/im);
+        if (m) vpnIp = m[1];
+      }
+    } catch { /* ignore */ }
   }
 
   res.json({
     success: true,
     installed,
+    wgExeExists,
+    tunnelExists,
     tunnelActive,
     tunnelName: WIREGUARD_TUNNEL_NAME,
     vpnIp,
@@ -944,30 +966,40 @@ app.post('/api/wireguard/generate-keys', async (req, res) => {
   }
 
   try {
-    // Generate private key
+    // Step 1: generate private key
     const privateKey = await runWg('genkey');
-    // Derive public key from private key
+    if (!privateKey || privateKey.length < 40) {
+      throw new Error('wg genkey returned an empty or invalid key');
+    }
+
+    // Step 2: derive public key — pipe private key to `wg pubkey` via stdin (safe, no shell injection)
     const publicKey = await new Promise((resolve, reject) => {
-      const ps = execFile(
-        'powershell.exe',
-        ['-NoProfile', '-NonInteractive', '-Command',
-          `Write-Output '${privateKey}' | & '${WG_EXE}' pubkey`],
-        { timeout: 10000, windowsHide: true },
-        (err, stdout, stderr) => {
-          if (err) return reject(new Error(stderr?.trim() || err.message));
-          resolve(stdout.trim());
-        }
-      );
+      const child = execFile(WG_EXE, ['pubkey'], { timeout: 10000, windowsHide: true }, (err, stdout, stderr) => {
+        if (err) return reject(new Error(stderr?.trim() || err.message));
+        const key = stdout.trim();
+        if (!key || key.length < 40) return reject(new Error('wg pubkey returned an empty result'));
+        resolve(key);
+      });
+      // Write private key to wg pubkey's stdin and close it
+      child.stdin.write(privateKey + '\n');
+      child.stdin.end();
     });
 
-    // Save keys to disk so they survive restarts
+    // Validate both keys look like real WireGuard keys (44-char base64 ending in =)
+    const keyRegex = /^[A-Za-z0-9+/]{43}=$/;
+    if (!keyRegex.test(privateKey)) throw new Error(`Generated private key has invalid format: "${privateKey}"`);
+    if (!keyRegex.test(publicKey))  throw new Error(`Derived public key has invalid format: "${publicKey}"`);
+
+    // Save keys to disk
     const keyDir = path.join(__dirname, 'data');
     if (!fsSync.existsSync(keyDir)) fsSync.mkdirSync(keyDir, { recursive: true });
     fsSync.writeFileSync(path.join(keyDir, 'wireguard-private.key'), privateKey, { mode: 0o600 });
-    fsSync.writeFileSync(path.join(keyDir, 'wireguard-public.key'), publicKey);
+    fsSync.writeFileSync(path.join(keyDir, 'wireguard-public.key'),  publicKey);
 
+    console.log(`[WireGuard] Keys generated. Public: ${publicKey}`);
     res.json({ success: true, privateKey, publicKey });
   } catch (err) {
+    console.error('[WireGuard] Key generation failed:', err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -1064,6 +1096,26 @@ app.post('/api/wireguard/deactivate', async (req, res) => {
     res.json({ success: true, message: 'WireGuard tunnel stopped' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/wireguard/ping
+// Runs a Windows ping from the tablet to a VPN IP and returns the output.
+// Body: { target: "10.0.0.1" }
+app.post('/api/wireguard/ping', async (req, res) => {
+  const target = String(req.body?.target || '').trim();
+  // Validate: only allow IP address format to prevent command injection
+  if (!/^[\d.]+$/.test(target)) {
+    return res.status(400).json({ success: false, output: 'Invalid target IP address' });
+  }
+  try {
+    // ping -n 4 sends 4 packets; -w 2000 is a 2s timeout per reply
+    const output = await runPS(`ping -n 4 -w 2000 ${target}`, 20000);
+    // Windows ping exits 0 even on failure — check for "TTL=" or "bytes=" in output
+    const success = output.includes('TTL=') || output.includes('bytes=') || output.includes('time=');
+    res.json({ success, output });
+  } catch (err) {
+    res.json({ success: false, output: err.message });
   }
 });
 

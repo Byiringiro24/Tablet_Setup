@@ -47,4 +47,20 @@ export const devicesApi = {
   create: (data: any) => api.post('/devices', data),
 };
 
+export const wireguardApi = {
+  /** Check if WireGuard is installed and whether the tunnel is active */
+  getStatus: () => api.get('/wireguard/status'),
+  /** Generate a new key pair on the tablet — returns { privateKey, publicKey } */
+  generateKeys: () => api.post('/wireguard/generate-keys'),
+  /** Write config + activate tunnel — requires server info pasted by admin */
+  install: (data: {
+    serverPublicKey: string;
+    serverEndpoint: string;   // e.g. "169.58.124.150:51820"
+    vpnIp: string;            // e.g. "10.0.0.2"
+    dns?: string;
+  }) => api.post('/wireguard/install', data),
+  /** Stop and remove the tunnel service */
+  deactivate: () => api.post('/wireguard/deactivate'),
+};
+
 export default api;
