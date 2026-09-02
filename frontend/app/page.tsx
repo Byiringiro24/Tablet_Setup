@@ -532,6 +532,12 @@ export default function SmartAttendanceDashboard() {
       });
       const data = await r.json();
       setWgPingResult(data);
+      // On success — the VPN tunnel is live. The school server will automatically
+      // pick up this tablet on its next SSE refresh (every 30s) and pull-logs sweep.
+      // Nothing extra needed — fully automatic from here.
+      if (data.success) {
+        toast.success("VPN verified — school server will connect automatically within 30 seconds", { duration: 5000 });
+      }
     } catch (e: any) {
       setWgPingResult({ success: false, output: e.message });
     }
@@ -1323,8 +1329,20 @@ PersistentKeepalive = 25`}</pre>
                   <div className="flex gap-3">
                     <button onClick={() => setWgStep(4)} className="secondary-action py-2.5 text-sm px-5">← Back</button>
                     {wgPingResult?.success && (
-                      <div className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-sm font-semibold text-emerald-300">
-                        <FiCheckCircle /> VPN tunnel fully verified
+                      <div className="flex-1 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-4 space-y-3">
+                        <div className="flex items-center gap-2 font-bold text-sm text-emerald-300">
+                          <FiCheckCircle className="text-lg shrink-0" /> Setup Complete — VPN tunnel is live
+                        </div>
+                        <div className="text-xs text-emerald-200/80 space-y-1.5">
+                          <p>✓ WireGuard tunnel is active and encrypted</p>
+                          <p>✓ School server will detect this tablet <strong>within 30 seconds</strong> and begin pulling attendance logs automatically</p>
+                          <p>✓ Every scan on the FK623 device will be sent to the school server in real-time via SSE</p>
+                          <p>✓ This setup survives Windows reboots — WireGuard runs as a Windows service</p>
+                        </div>
+                        <button onClick={closeDevModal}
+                          className="w-full rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-700 transition">
+                          Close — Tablet is ready
+                        </button>
                       </div>
                     )}
                   </div>
