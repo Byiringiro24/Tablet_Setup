@@ -1,9 +1,10 @@
 const express = require('express');
 const cors = require('cors');
-const { spawn } = require('child_process');
+const { spawn, execFile } = require('child_process');
 const path = require('path');
 const readline = require('readline');
 const fs = require('fs');
+const fsSync = fs;  // alias used in WireGuard routes for clarity
 const app = express();
 
 app.use(cors());
