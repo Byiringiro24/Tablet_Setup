@@ -256,6 +256,7 @@ async function runAutoConnect() {
       currentDevice = result.data;
       autoConnectAttempt = 0;
       console.log(`Auto-connect: connected successfully to ${ipAddress}`);
+      syncTimeAfterConnect();                                    // sync device clock to tablet time
       refreshUsersCache().catch(() => null); // pull users so names resolve immediately
       startLogPoll();
       // Check connection health every 30s (not 15s — gives log poll room to breathe)
@@ -546,6 +547,17 @@ function readableMethod(method) {
   return value.startsWith('MODE_') ? 'Device Verified' : method;
 }
 
+// Sync device time to tablet clock immediately after every successful connection.
+// Runs fire-and-forget so it never blocks the connect response.
+function syncTimeAfterConnect() {
+  sendCommand('SYNC_TIME', 10000)
+    .then((r) => {
+      if (r.success) console.log(`[Time Sync] Device clock synced to tablet time: ${new Date().toISOString()}`);
+      else           console.warn(`[Time Sync] SYNC_TIME failed: ${r.error || 'unknown error'}`);
+    })
+    .catch((err) => console.warn(`[Time Sync] SYNC_TIME error: ${err.message}`));
+}
+
 async function refreshUsersCache() {
   const result = await sendCommand('GET_USERS', 60000);
   if (result.success) usersCache = aggregateDeviceUsers(result.data.users || []);
@@ -634,6 +646,7 @@ app.post('/api/device/connect', async (req, res) => {
   if (result.success) {
     currentDevice = result.data;
     autoConnectAttempt = 0;
+    syncTimeAfterConnect();                  // sync device clock to tablet time
     refreshUsersCache().catch(() => null);
     startLogPoll();
     scheduleAutoConnect(30000);
@@ -661,6 +674,7 @@ app.post('/api/device/connect-saved', async (req, res) => {
   if (result.success) {
     currentDevice = result.data;
     autoConnectAttempt = 0;
+    syncTimeAfterConnect();                  // sync device clock to tablet time
     refreshUsersCache().catch(() => null);
     startLogPoll();
     scheduleAutoConnect(30000);
