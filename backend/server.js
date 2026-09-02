@@ -1146,15 +1146,31 @@ app.post('/api/wireguard/deactivate', async (req, res) => {
 app.post('/api/wireguard/ping', async (req, res) => {
   const target = String(req.body?.target || '').trim();
   // Validate: only allow IP address format to prevent command injection
-  if (!/^[\d.]+$/.test(target)) {
+  if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(target) || target.split('.').some(n => Number(n) > 255)) {
     return res.status(400).json({ success: false, output: 'Invalid target IP address' });
   }
   try {
-    // ping -n 4 sends 4 packets; -w 2000 is a 2s timeout per reply
-    const output = await runPS(`ping -n 4 -w 2000 ${target}`, 20000);
-    // Windows ping exits 0 even on failure — check for "TTL=" or "bytes=" in output
-    const success = output.includes('TTL=') || output.includes('bytes=') || output.includes('time=');
-    res.json({ success, output });
+    // Use ping.exe directly — avoids PowerShell alias ambiguity.
+    // -n 4 = 4 packets, -w 2000 = 2s timeout per packet, -l 32 = 32-byte payload
+    const output = await new Promise((resolve, reject) => {
+      execFile(
+        'ping.exe',
+        ['-n', '4', '-w', '2000', '-l', '32', target],
+        { timeout: 20000, windowsHide: true },
+        (err, stdout, stderr) => {
+          // ping.exe exits with non-zero on failure — we want the output regardless
+          // so we resolve even on error (stderr) to show the user what happened
+          const out = (stdout || stderr || (err ? err.message : 'No output')).trim();
+          resolve(out);
+        }
+      );
+    });
+
+    const out = String(output);
+    // Windows ping success indicators — works on EN, FR, DE, and other locales
+    // "TTL=" appears in every locale for successful replies
+    const success = out.includes('TTL=') || out.includes('ttl=') || out.includes('bytes=');
+    res.json({ success, output: out });
   } catch (err) {
     res.json({ success: false, output: err.message });
   }
