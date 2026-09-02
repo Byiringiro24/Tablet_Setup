@@ -19,7 +19,7 @@ const WG_SERVER_ENDPOINT_DEFAULT = "169.58.124.150:51820";
 /* ─── Types ─── */
 type Stats = { totalStudents: number; totalDevices: number; onlineDevices: number; attendanceToday: number; lateStudents: number; totalLogs: number };
 type DeviceStatus = { connected?: boolean; deviceId?: string; ipAddress?: string; port?: number; handle?: number; serialNumber?: string; productName?: string; productCode?: string; users?: number; logs?: number; faces?: number; fingerprints?: number; cards?: number };
-type AttendanceLog = { id: string; studentId?: string; studentDeviceId?: string; studentName: string; className?: string; section?: string; deviceId: string; authenticationMethod: string; timestamp: string; status: string };
+type AttendanceLog = { id: string; studentId?: string; studentDeviceId?: string; studentName: string; className?: string; section?: string; deviceId: string; authenticationMethod: string; timestamp: string; status: string; photoUrl?: string };
 type Student = { studentId: string; studentDeviceId: string; name: string; className: string; section?: string; assignedDeviceId?: string; biometricMethods?: string[]; deviceUser?: DeviceUser };
 type DeviceUser = { userId: string; studentDeviceId: string; name: string; privilege: number; enabled: boolean; biometricMethods: string[] };
 
@@ -1410,12 +1410,34 @@ function LiveAttendanceScreen({ log, onDismiss }: { log: AttendanceLog; onDismis
       <div className={`relative w-full max-w-lg rounded-3xl border bg-slate-900/95 p-10 shadow-2xl ${glowColor} shadow-2xl ${accentColor.split(" ")[2]}`}
         style={{ borderColor: isLate ? "rgba(245,158,11,0.4)" : isAbsent ? "rgba(239,68,68,0.4)" : "rgba(16,185,129,0.4)" }}>
 
-        {/* Method icon */}
+        {/* Student photo or method icon */}
         <div className="mb-6 flex justify-center">
-          <div className={`flex h-24 w-24 items-center justify-center rounded-full border-4 text-5xl shadow-xl
-            ${isLate ? "border-amber-500/50 bg-amber-500/10" : isAbsent ? "border-red-500/50 bg-red-500/10" : "border-emerald-500/50 bg-emerald-500/10"}`}>
-            {methodIcon}
-          </div>
+          {log.photoUrl ? (
+            <div className={`relative h-32 w-32 rounded-full border-4 overflow-hidden shadow-xl
+              ${isLate ? "border-amber-500/70" : isAbsent ? "border-red-500/70" : "border-emerald-500/70"}`}>
+              <img
+                src={log.photoUrl}
+                alt={log.studentName}
+                className="h-full w-full object-cover"
+                onError={(e) => {
+                  // Fallback to method icon if photo fails to load
+                  (e.currentTarget as HTMLImageElement).style.display = "none";
+                  (e.currentTarget.nextSibling as HTMLElement).style.display = "flex";
+                }}
+              />
+              {/* Hidden fallback — shown if image fails */}
+              <div style={{ display: "none" }}
+                className={`absolute inset-0 flex items-center justify-center text-5xl
+                  ${isLate ? "bg-amber-500/10" : isAbsent ? "bg-red-500/10" : "bg-emerald-500/10"}`}>
+                {methodIcon}
+              </div>
+            </div>
+          ) : (
+            <div className={`flex h-32 w-32 items-center justify-center rounded-full border-4 text-5xl shadow-xl
+              ${isLate ? "border-amber-500/50 bg-amber-500/10" : isAbsent ? "border-red-500/50 bg-red-500/10" : "border-emerald-500/50 bg-emerald-500/10"}`}>
+              {methodIcon}
+            </div>
+          )}
         </div>
 
         {/* Student info */}

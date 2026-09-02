@@ -479,6 +479,7 @@ function normalizeStudent(input) {
     parentPhone: input.parentPhone || '',
     phone: input.phone || '',
     email: input.email || '',
+    photoUrl: input.photoUrl || input.photo_url || '',   // ← stored for display on scan
     createdAt: input.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -530,6 +531,7 @@ function attendanceFromLog(log) {
     timestamp: log.timestamp,
     status: resolved.status,
     attendancePeriod: resolved.period,
+    photoUrl: student?.photoUrl || '',   // ← included for display on LiveAttendanceScreen
     verified: true,
     rawData: log,
   };
