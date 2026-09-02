@@ -359,6 +359,7 @@ export default function SmartAttendanceDashboard() {
 
   /* ── developer modal ── */
   const [devStep,          setDevStep]         = useState<"closed"|"password"|"settings"|"wireguard">("closed");
+  const [devPendingAction, setDevPendingAction] = useState<"settings"|"wireguard">("settings");
   const [devPassword,      setDevPassword]      = useState("");
   const [devPasswordError, setDevPasswordError] = useState("");
   const [showDevPassword,  setShowDevPassword]  = useState(false);
@@ -379,6 +380,7 @@ export default function SmartAttendanceDashboard() {
 
   const openDevModal = () => {
     setDevPassword(""); setDevPasswordError(""); setShowDevPassword(false);
+    setDevPendingAction("settings");
     // Always populate devForm from the live saved config
     fetch("http://localhost:5000/api/health")
       .then((r) => r.json())
@@ -399,8 +401,19 @@ export default function SmartAttendanceDashboard() {
 
   function submitDevPassword(e: FormEvent) {
     e.preventDefault();
-    if (devPassword === DEV_PASSWORD) { setDevPasswordError(""); setDevStep("settings"); }
-    else { setDevPasswordError("Incorrect password. Try again."); setDevPassword(""); }
+    if (devPassword === DEV_PASSWORD) {
+      setDevPasswordError("");
+      setDevPassword("");
+      if (devPendingAction === "wireguard") {
+        // Password correct — now load WireGuard status and open wizard
+        loadAndOpenWgWizard();
+      } else {
+        setDevStep("settings");
+      }
+    } else {
+      setDevPasswordError("Incorrect password. Try again.");
+      setDevPassword("");
+    }
   }
 
   function saveDevSettings(e: FormEvent) {
@@ -433,6 +446,13 @@ export default function SmartAttendanceDashboard() {
 
   /* ── WireGuard wizard helpers ── */
   async function openWgWizard() {
+    // Gate behind the same admin password as Developer settings
+    setDevPassword(""); setDevPasswordError(""); setShowDevPassword(false);
+    setDevPendingAction("wireguard");
+    setDevStep("password");
+  }
+
+  async function loadAndOpenWgWizard() {
     setWgError("");
     setWgPingResult(null);
     setWgBusy(true);
@@ -441,10 +461,9 @@ export default function SmartAttendanceDashboard() {
       const health = await fetch(`${API_BASE}/api/health`).then(r => r.json()).catch(() => null);
       const vpnConfig = health?.vpn;
       if (vpnConfig?.serverEndpoint) {
-        // Derive server VPN IP from subnet — typically first host (e.g. 10.0.0.1)
         const subnetBase = (vpnConfig.allowedIPs || '10.0.0.0/16').split('/')[0];
         const octets = subnetBase.split('.');
-        const serverVpnIp = `${octets[0]}.${octets[1]}.0.1`; // e.g. 10.0.0.1
+        const serverVpnIp = `${octets[0]}.${octets[1]}.0.1`;
         setWgForm(prev => ({
           ...prev,
           serverEndpoint: vpnConfig.serverEndpoint,
@@ -457,7 +476,6 @@ export default function SmartAttendanceDashboard() {
       const s = r.data as WgStatus & { installed: boolean };
       setWgStatus(s);
       setWgInstalled(s.installed);
-      // If keys already saved on backend, skip to step 3
       if (s.publicKey) {
         setWgKeys({ privateKey: "••••••••••••••••••••••••••••••••••••••••••••", publicKey: s.publicKey });
         setWgStep(s.tunnelActive ? 4 : 3);
@@ -852,8 +870,12 @@ export default function SmartAttendanceDashboard() {
           <div className="w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-900 p-8 shadow-2xl">
             <div className="mb-6 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="rounded-xl bg-cyan-500/15 p-3 text-cyan-400"><FiLock className="text-xl" /></div>
-                <h2 className="text-xl font-bold">Developer Access</h2>
+                <div className={`rounded-xl p-3 ${devPendingAction === "wireguard" ? "bg-cyan-500/15 text-cyan-400" : "bg-cyan-500/15 text-cyan-400"}`}>
+                  {devPendingAction === "wireguard" ? <FiShield className="text-xl" /> : <FiLock className="text-xl" />}
+                </div>
+                <h2 className="text-xl font-bold">
+                  {devPendingAction === "wireguard" ? "WireGuard VPN Access" : "Developer Access"}
+                </h2>
               </div>
               <button type="button" onClick={closeDevModal} className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white"><FiX /></button>
             </div>
