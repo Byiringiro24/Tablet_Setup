@@ -1093,15 +1093,19 @@ export default function SmartAttendanceDashboard() {
                         </div>
                       </div>
                       <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 space-y-2 text-sm text-amber-200">
-                        <p className="font-semibold flex items-center gap-2"><FiTerminal /> Now add this tablet as a peer on the server:</p>
-                        <p className="text-xs text-amber-300/80">SSH into <code className="text-amber-300">root@{wgForm.serverEndpoint ? wgForm.serverEndpoint.split(':')[0] : '169.58.124.150'}</code> and run:</p>
-                        <pre className="rounded-lg bg-slate-900/80 p-3 text-xs text-emerald-300 font-mono overflow-x-auto whitespace-pre-wrap">{`wg set wg0 peer ${wgKeys.publicKey} \\
-  allowed-ips ${wgForm.vpnIp}/32
-
-# Make it persist across reboots:
-wg-quick save wg0`}</pre>
-                        <p className="text-xs text-amber-300/80 mt-2">Also get the server public key — run on the server:</p>
-                        <pre className="rounded-lg bg-slate-900/80 p-3 text-xs text-emerald-300 font-mono overflow-x-auto">{`cat /etc/wireguard/server_public.key`}</pre>
+                        <p className="font-semibold flex items-center gap-2"><FiTerminal /> Now register this tablet on the school server:</p>
+                        <p className="text-xs text-amber-300/80">
+                          Go to the <strong>Super Admin portal → Hardware → VPN Setup tab</strong>:
+                        </p>
+                        <ol className="list-decimal ml-4 space-y-1.5 text-xs text-amber-200">
+                          <li>The <strong>Step 1 (Server Info)</strong> panel shows the server public key and next available VPN IP — note these down</li>
+                          <li>In the <strong>Step 2 (Register Tablet)</strong> panel, paste the tablet public key above and click <strong>Add Peer to VPN</strong></li>
+                          <li>After adding, the portal shows the server public key, server endpoint, and your assigned VPN IP — copy these</li>
+                          <li>Come back here and click <strong>Next → Configure</strong>, then paste those values</li>
+                        </ol>
+                        <div className="mt-2 rounded-lg bg-slate-900/80 p-3 text-xs text-emerald-300 font-mono">
+                          Tablet public key copied above → paste in Super Admin → VPN Setup → Step 2
+                        </div>
                       </div>
                     </div>
                   )}
@@ -1139,7 +1143,7 @@ wg-quick save wg0`}</pre>
                       </label>
                       <input type="text" value={wgForm.serverPublicKey}
                         onChange={(e) => setWgForm({ ...wgForm, serverPublicKey: e.target.value.trim() })}
-                        placeholder="Paste server public key here (from /etc/wireguard/server_public.key)"
+                        placeholder="Paste server public key (from Super Admin → VPN Setup → Step 1)"
                         className="form-field font-mono text-xs" />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
