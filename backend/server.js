@@ -552,7 +552,21 @@ async function refreshUsersCache() {
 
 app.get('/api/health', async (req, res) => {
   const savedConfig = loadDeviceConfig();
-  res.json({ status: 'ok', bridgeRunning: bridgeProcess !== null, bridgeReady, device: currentDevice, autoConnect: { enabled: autoConnectEnabled, attempt: autoConnectAttempt }, savedConfig });
+  res.json({
+    status: 'ok',
+    bridgeRunning: bridgeProcess !== null,
+    bridgeReady,
+    device: currentDevice,
+    autoConnect: { enabled: autoConnectEnabled, attempt: autoConnectAttempt },
+    savedConfig,
+    tabletUuid: TABLET_UUID || null,
+    // VPN config — tablet wizard reads these to pre-fill the form
+    vpn: {
+      serverEndpoint: WG_SERVER_ENDPOINT,
+      allowedIPs: VPN_ALLOWED_IPS,
+      dns: WG_DNS,
+    },
+  });
 });
 
 // Server-Sent Events — frontend subscribes here for real-time attendance updates
@@ -851,9 +865,15 @@ app.get('/api/attendance/today', (req, res) => {
 //   4. GET  /api/wireguard/status        → verify tunnel is Active
 // ─────────────────────────────────────────────────────────────────────────────
 
-const { execFile } = require('child_process');
-const os = require('os');
-const fsSync = require('fs');
+// VPN configuration — read from .env to match the school server's subnet.
+// Must match the server's wg0.conf AllowedIPs (default: 10.0.0.0/16 for 65534 tablets).
+const VPN_ALLOWED_IPS = process.env.VPN_ALLOWED_IPS || '10.0.0.0/16';
+const WG_SERVER_ENDPOINT = process.env.WG_SERVER_ENDPOINT || '169.58.124.150:51820';
+const WG_DNS = process.env.WG_DNS || '1.1.1.1';
+
+// Tablet identity — set TABLET_UUID in .env after registering in the portal.
+// The school server uses this to identify which tablet is making requests.
+const TABLET_UUID = process.env.TABLET_UUID || '';
 
 const WG_EXE = 'C:\\Program Files\\WireGuard\\wg.exe';
 const WIREGUARD_TUNNEL_NAME = 'EcareAfrica';
@@ -1033,16 +1053,16 @@ app.post('/api/wireguard/install', async (req, res) => {
   }
   const privateKey = fsSync.readFileSync(privateKeyFile, 'utf8').trim();
 
-  // Build the WireGuard config
+  // Build the WireGuard config — subnet from env (default: /16 to match server)
   const confContent = [
     '[Interface]',
     `PrivateKey = ${privateKey}`,
-    `Address = ${vpnIp}/24`,
-    `DNS = ${dns}`,
+    `Address = ${vpnIp}/32`,
+    `DNS = ${dns || WG_DNS}`,
     '',
     '[Peer]',
     `PublicKey = ${serverPublicKey}`,
-    `AllowedIPs = 10.0.0.0/24`,
+    `AllowedIPs = ${VPN_ALLOWED_IPS}`,
     `Endpoint = ${serverEndpoint}`,
     'PersistentKeepalive = 25',
   ].join('\r\n');

@@ -13,6 +13,8 @@ import {
 import { dashboardApi, deviceApi, studentApi, wireguardApi } from "@/lib/api";
 
 const DEV_PASSWORD = "admin1234";
+// Default server endpoint — overridden at runtime by reading /api/health from backend
+const WG_SERVER_ENDPOINT_DEFAULT = "169.58.124.150:51820";
 
 /* ─── Types ─── */
 type Stats = { totalStudents: number; totalDevices: number; onlineDevices: number; attendanceToday: number; lateStudents: number; totalLogs: number };
@@ -369,8 +371,8 @@ export default function SmartAttendanceDashboard() {
   const [wgBusy,       setWgBusy]       = useState(false);
   const [wgError,      setWgError]      = useState("");
   const [wgKeys,       setWgKeys]       = useState<{privateKey:string;publicKey:string}|null>(null);
-  const [wgForm,       setWgForm]       = useState({ serverPublicKey: "", serverEndpoint: "169.58.124.150:51820", vpnIp: "10.0.0.2", dns: "1.1.1.1" });
-  const [wgPingTarget, setWgPingTarget] = useState("10.0.0.1");
+  const [wgForm,       setWgForm]       = useState({ serverPublicKey: "", serverEndpoint: WG_SERVER_ENDPOINT_DEFAULT, vpnIp: "10.0.0.2", dns: "1.1.1.1" });
+  const [wgPingTarget, setWgPingTarget] = useState("10.0.0.1"); // server VPN IP — updated from health on wizard open
   const [wgPingResult, setWgPingResult] = useState<{success:boolean;output:string}|null>(null);
   const [wgInstalled,  setWgInstalled]  = useState(false);
   const [copiedKey,    setCopiedKey]    = useState(false);
@@ -435,6 +437,22 @@ export default function SmartAttendanceDashboard() {
     setWgPingResult(null);
     setWgBusy(true);
     try {
+      // Load health to get server endpoint and VPN config from env
+      const health = await fetch(`${API_BASE}/api/health`).then(r => r.json()).catch(() => null);
+      const vpnConfig = health?.vpn;
+      if (vpnConfig?.serverEndpoint) {
+        // Derive server VPN IP from subnet — typically first host (e.g. 10.0.0.1)
+        const subnetBase = (vpnConfig.allowedIPs || '10.0.0.0/16').split('/')[0];
+        const octets = subnetBase.split('.');
+        const serverVpnIp = `${octets[0]}.${octets[1]}.0.1`; // e.g. 10.0.0.1
+        setWgForm(prev => ({
+          ...prev,
+          serverEndpoint: vpnConfig.serverEndpoint,
+          dns: vpnConfig.dns || "1.1.1.1",
+        }));
+        setWgPingTarget(serverVpnIp);
+      }
+
       const r = await wireguardApi.getStatus();
       const s = r.data as WgStatus & { installed: boolean };
       setWgStatus(s);
@@ -1048,7 +1066,7 @@ export default function SmartAttendanceDashboard() {
                       </div>
                       <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 space-y-2 text-sm text-amber-200">
                         <p className="font-semibold flex items-center gap-2"><FiTerminal /> Now add this tablet as a peer on the server:</p>
-                        <p className="text-xs text-amber-300/80">SSH into <code className="text-amber-300">root@169.58.124.150</code> and run:</p>
+                        <p className="text-xs text-amber-300/80">SSH into <code className="text-amber-300">root@{wgForm.serverEndpoint ? wgForm.serverEndpoint.split(':')[0] : '169.58.124.150'}</code> and run:</p>
                         <pre className="rounded-lg bg-slate-900/80 p-3 text-xs text-emerald-300 font-mono overflow-x-auto whitespace-pre-wrap">{`wg set wg0 peer ${wgKeys.publicKey} \\
   allowed-ips ${wgForm.vpnIp}/32
 
@@ -1125,12 +1143,12 @@ wg-quick save wg0`}</pre>
                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Config Preview — EcareAfrica.conf</p>
                     <pre className="text-xs font-mono text-emerald-300 whitespace-pre-wrap overflow-x-auto leading-relaxed">{`[Interface]
 PrivateKey = <saved on tablet>
-Address    = ${wgForm.vpnIp || "10.0.0.2"}/24
+Address    = ${wgForm.vpnIp || "10.0.0.2"}/32
 DNS        = ${wgForm.dns || "1.1.1.1"}
 
 [Peer]
 PublicKey           = ${wgForm.serverPublicKey || "<paste server public key>"}
-AllowedIPs          = 10.0.0.0/24
+AllowedIPs          = 10.0.0.0/16
 Endpoint            = ${wgForm.serverEndpoint || "169.58.124.150:51820"}
 PersistentKeepalive = 25`}</pre>
                   </div>
