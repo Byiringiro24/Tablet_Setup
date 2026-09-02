@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const cors = require('cors');
 const { spawn, execFile } = require('child_process');
 const path = require('path');
@@ -36,7 +36,7 @@ let autoConnectAttempt = 0;
 // Never re-read from disk during auto-connect to avoid stale browser overwrites.
 let activeDeviceConfig = loadDeviceConfig();
 
-// SSE clients — set of response objects
+// SSE clients â€” set of response objects
 const sseClients = new Set();
 
 function sseEmit(event, data) {
@@ -76,7 +76,7 @@ async function runLogPoll() {
       // If command failed with a connection-type error, device is offline
       const err = (result.error || '').toLowerCase();
       if (err.includes('not reachable') || err.includes('disconnect') || err.includes('timeout') || err.includes('bridge stopped')) {
-        console.log('Log poll: device offline detected — triggering reconnect');
+        console.log('Log poll: device offline detected â€” triggering reconnect');
         currentDevice = null;
         stopLogPoll();
         sseEmit('deviceStatus', { connected: false });
@@ -86,7 +86,7 @@ async function runLogPoll() {
     }
     const rawLogs = Array.isArray(result.data?.logs) ? result.data.logs : [];
 
-    // On first poll after connect, seed ALL existing logs — never flash old attendance
+    // On first poll after connect, seed ALL existing logs â€” never flash old attendance
     if (seenLogIds.size === 0 && rawLogs.length > 0) {
       const getLogKey = (raw) => raw.id || `${raw.userId}-${raw.timestamp}`;
       rawLogs.forEach((raw) => seenLogIds.add(getLogKey(raw)));
@@ -94,7 +94,7 @@ async function runLogPoll() {
       // Pull users then emit init with resolved names for sidebar
       await refreshUsersCache().catch(() => null);
       sseEmit('init', rawLogs.map(attendanceFromLog));
-      console.log(`Log poll: seeded ${rawLogs.length} existing log(s) — no flash`);
+      console.log(`Log poll: seeded ${rawLogs.length} existing log(s) â€” no flash`);
       pollBusy = false;
       return;
     }
@@ -117,7 +117,7 @@ async function runLogPoll() {
       sseEmit('attendance', freshMapped);
     }
   } catch (err) {
-    // silent — device may be briefly busy
+    // silent â€” device may be briefly busy
   }
   pollBusy = false;
 }
@@ -227,7 +227,7 @@ async function runAutoConnect() {
   if (!autoConnectEnabled) return;
   if (currentDevice && currentDevice.connected) return;
 
-  // Use the in-memory cached config — never re-read from file during auto-connect
+  // Use the in-memory cached config â€” never re-read from file during auto-connect
   // (file can be overwritten by stale browser requests; memory is authoritative)
   if (!activeDeviceConfig || !activeDeviceConfig.ipAddress) {
     console.log('Auto-connect: no device config in memory, retrying in 10s...');
@@ -243,11 +243,11 @@ async function runAutoConnect() {
 
   try {
     await ensureBridge();
-    // Stop log poll before connecting — prevents queue contention
+    // Stop log poll before connecting â€” prevents queue contention
     stopLogPoll();
     const { ipAddress, port = 5005, license = 1261, deviceId = '', netPassword = 0, protocolType = -1 } = config;
     const normalizedProtocol = protocolType === null || protocolType === undefined ? -1 : Number(protocolType);
-    // Use timeout from saved config — longer timeout needed for first connect
+    // Use timeout from saved config â€” longer timeout needed for first connect
     const normalizedTimeout = Number(config.timeoutMs) > 0 ? Number(config.timeoutMs) : 15000;
     const result = await sendCommand(
       `CONNECT|${ipAddress}|${Number(port)}|${Number(license)}|${deviceId}|${Number(netPassword)}|${normalizedProtocol}|${normalizedTimeout}`,
@@ -260,11 +260,11 @@ async function runAutoConnect() {
       syncTimeAfterConnect();                                    // sync device clock to tablet time
       refreshUsersCache().catch(() => null); // pull users so names resolve immediately
       startLogPoll();
-      // Check connection health every 30s (not 15s — gives log poll room to breathe)
+      // Check connection health every 30s (not 15s â€” gives log poll room to breathe)
       scheduleAutoConnect(30000);
     } else {
       console.log(`Auto-connect failed (attempt #${attempt}): ${result.error || 'unknown error'}`);
-      // Retry with capped backoff: 3s, 4.5s, 6.7s, … 30s max
+      // Retry with capped backoff: 3s, 4.5s, 6.7s, â€¦ 30s max
       const delay = Math.min(3000 * Math.pow(1.5, Math.min(attempt - 1, 6)), 30000);
       scheduleAutoConnect(delay);
     }
@@ -308,7 +308,7 @@ function startBridge() {
   if (bridgeProcess) return;
   if (!fs.existsSync(bridgePath)) {
     console.warn('FKBridge.exe not found at:', bridgePath);
-    console.warn('Bridge features disabled — WireGuard VPN setup endpoints are still available.');
+    console.warn('Bridge features disabled â€” WireGuard VPN setup endpoints are still available.');
     return;
   }
   console.log('Starting FK bridge:', bridgePath);
@@ -344,7 +344,7 @@ function startBridge() {
     bridgeReady = false;
     currentDevice = null;
     stopLogPoll();
-    // Bridge died — schedule auto-reconnect after a short delay
+    // Bridge died â€” schedule auto-reconnect after a short delay
     if (autoConnectEnabled) scheduleAutoConnect(5000);
   });
 }
@@ -360,7 +360,7 @@ async function ensureBridge() {
   if (!bridgeReady) throw new Error('FK bridge did not start. Build FKBridge first and confirm FKBridge.exe exists.');
 }
 
-// Command lock — only one bridge command runs at a time
+// Command lock â€” only one bridge command runs at a time
 let commandLock = false;
 const commandQueue = [];
 
@@ -376,7 +376,7 @@ async function sendCommand(command, timeoutMs = 30000) {
 async function drainCommandQueue() {
   if (commandLock || commandQueue.length === 0) return;
   commandLock = true;
-  // Prioritise CONNECT commands — if one is waiting, drop all GET_LOGS in front of it
+  // Prioritise CONNECT commands â€” if one is waiting, drop all GET_LOGS in front of it
   const connectIdx = commandQueue.findIndex(({ command }) => command.startsWith('CONNECT'));
   if (connectIdx > 0) {
     // Remove all non-CONNECT commands ahead of it to avoid blocking connect
@@ -481,7 +481,7 @@ function normalizeStudent(input) {
     parentPhone: input.parentPhone || '',
     phone: input.phone || '',
     email: input.email || '',
-    photoUrl: input.photoUrl || input.photo_url || '',   // ← stored for display on scan
+    photoUrl: input.photoUrl || input.photo_url || '',   // â† stored for display on scan
     createdAt: input.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -533,7 +533,7 @@ function attendanceFromLog(log) {
     timestamp: log.timestamp,
     status: resolved.status,
     attendancePeriod: resolved.period,
-    photoUrl: student?.photoUrl || '',   // ← included for display on LiveAttendanceScreen
+    photoUrl: student?.photoUrl || '',   // â† included for display on LiveAttendanceScreen
     verified: true,
     rawData: log,
   };
@@ -579,7 +579,7 @@ app.get('/api/health', async (req, res) => {
     autoConnect: { enabled: autoConnectEnabled, attempt: autoConnectAttempt },
     savedConfig,
     tabletUuid: TABLET_UUID || null,
-    // VPN config — tablet wizard reads these to pre-fill the form
+    // VPN config â€” tablet wizard reads these to pre-fill the form
     vpn: {
       serverEndpoint: WG_SERVER_ENDPOINT,
       allowedIPs: VPN_ALLOWED_IPS,
@@ -588,7 +588,7 @@ app.get('/api/health', async (req, res) => {
   });
 });
 
-// Server-Sent Events — frontend subscribes here for real-time attendance updates
+// Server-Sent Events â€” frontend subscribes here for real-time attendance updates
 app.get('/api/events', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -601,7 +601,7 @@ app.get('/api/events', (req, res) => {
     try { res.write(': heartbeat\n\n'); } catch { /* client gone */ }
   }, 20000);
 
-  // Send current log cache immediately on connect — seed seenLogIds so they're never treated as fresh
+  // Send current log cache immediately on connect â€” seed seenLogIds so they're never treated as fresh
   const current = logsCache.map(attendanceFromLog);
   current.forEach((l) => seenLogIds.add(l.id));
   // Send to frontend as init (sidebar logs only, no flash)
@@ -639,7 +639,7 @@ app.post('/api/device/connect', async (req, res) => {
     // If there is already a saved config with a different IP, ignore the caller's IP and use the saved one
     const existing = loadDeviceConfig();
     if (existing && existing.ipAddress && existing.ipAddress !== targetAddress) {
-      // Silently reject — don't log spam from stale browser requests
+      // Silently reject â€” don't log spam from stale browser requests
       return res.status(400).json({ success: false, error: `Device IP mismatch. Saved IP is ${existing.ipAddress}. Open Developer settings to update it.` });
     }
   }
@@ -659,9 +659,9 @@ app.post('/api/device/connect', async (req, res) => {
   apiResult(res, result);
 });
 
-// Connect using saved config — frontend calls this so it never overwrites the saved IP
+// Connect using saved config â€” frontend calls this so it never overwrites the saved IP
 app.post('/api/device/connect-saved', async (req, res) => {
-  // If already connected, return current device state immediately — no need to reconnect
+  // If already connected, return current device state immediately â€” no need to reconnect
   if (currentDevice && currentDevice.connected) {
     return res.json({ success: true, data: currentDevice });
   }
@@ -709,7 +709,7 @@ app.get('/api/device/status', async (req, res) => {
   if (result.success) {
     currentDevice = result.data;
   } else {
-    // STATUS failed — device is offline, clear it so frontend shows disconnected
+    // STATUS failed â€” device is offline, clear it so frontend shows disconnected
     currentDevice = null;
     stopLogPoll();
     if (autoConnectEnabled) scheduleAutoConnect(3000);
@@ -874,25 +874,25 @@ app.get('/api/attendance/today', (req, res) => {
   res.json({ success: true, summary: { total: todayLogs.length, checkIns: todayLogs.length, uniqueStudents: new Set(todayLogs.map((log) => log.studentDeviceId)).size } });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // WireGuard VPN Setup Endpoints
 // These run PowerShell on the Windows tablet so the super admin can set up
 // the VPN tunnel from a web browser without touching a terminal.
 //
 // Flow:
-//   1. GET  /api/wireguard/status       → check if WireGuard is installed & tunnel state
-//   2. POST /api/wireguard/generate-keys → generate a new private+public key pair
-//   3. POST /api/wireguard/install       → write the tunnel config and activate it
-//   4. GET  /api/wireguard/status        → verify tunnel is Active
-// ─────────────────────────────────────────────────────────────────────────────
+//   1. GET  /api/wireguard/status       â†’ check if WireGuard is installed & tunnel state
+//   2. POST /api/wireguard/generate-keys â†’ generate a new private+public key pair
+//   3. POST /api/wireguard/install       â†’ write the tunnel config and activate it
+//   4. GET  /api/wireguard/status        â†’ verify tunnel is Active
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-// VPN configuration — read from .env to match the school server's subnet.
+// VPN configuration â€” read from .env to match the school server's subnet.
 // Must match the server's wg0.conf AllowedIPs (default: 10.0.0.0/16 for 65534 tablets).
 const VPN_ALLOWED_IPS = process.env.VPN_ALLOWED_IPS || '10.0.0.0/16';
 const WG_SERVER_ENDPOINT = process.env.WG_SERVER_ENDPOINT || '169.58.124.150:51820';
 const WG_DNS = process.env.WG_DNS || '1.1.1.1';
 
-// Tablet identity — set TABLET_UUID in .env after registering in the portal.
+// Tablet identity â€” set TABLET_UUID in .env after registering in the portal.
 // The school server uses this to identify which tablet is making requests.
 const TABLET_UUID = process.env.TABLET_UUID || '';
 
@@ -940,7 +940,7 @@ app.get('/api/wireguard/status', async (req, res) => {
 
   if (installed) {
     try {
-      // `wg show all` lists all active interfaces — safer than `wg show <name>` which errors when absent
+      // `wg show all` lists all active interfaces â€” safer than `wg show <name>` which errors when absent
       const showAll = await runWg('show', 'all').catch(() => '');
       if (showAll.includes(WIREGUARD_TUNNEL_NAME)) {
         tunnelExists = true;
@@ -1013,7 +1013,7 @@ app.post('/api/wireguard/generate-keys', async (req, res) => {
       throw new Error('wg genkey returned an empty or invalid key');
     }
 
-    // Step 2: derive public key — pipe private key to `wg pubkey` via stdin (safe, no shell injection)
+    // Step 2: derive public key â€” pipe private key to `wg pubkey` via stdin (safe, no shell injection)
     const publicKey = await new Promise((resolve, reject) => {
       const child = execFile(WG_EXE, ['pubkey'], { timeout: 10000, windowsHide: true }, (err, stdout, stderr) => {
         if (err) return reject(new Error(stderr?.trim() || err.message));
@@ -1074,7 +1074,7 @@ app.post('/api/wireguard/install', async (req, res) => {
   }
   const privateKey = fsSync.readFileSync(privateKeyFile, 'utf8').trim();
 
-  // Build the WireGuard config — subnet from env (default: /16 to match server)
+  // Build the WireGuard config â€” subnet from env (default: /16 to match server)
   const confContent = [
     '[Interface]',
     `PrivateKey = ${privateKey}`,
@@ -1086,30 +1086,39 @@ app.post('/api/wireguard/install', async (req, res) => {
     `AllowedIPs = ${VPN_ALLOWED_IPS}`,
     `Endpoint = ${serverEndpoint}`,
     'PersistentKeepalive = 25',
-  ].join('\r\n');
+  ].join('\n');  // LF only â€” WireGuard on Windows accepts both LF and CRLF
 
   // Write config to WireGuard tunnel directory
+  // Use Buffer.from with 'utf8' to guarantee NO BOM â€” Node's default utf8 has no BOM
+  // but we make it explicit to be safe.
   const confPath = path.join(WG_TUNNEL_DIR, `${WIREGUARD_TUNNEL_NAME}.conf`);
   try {
     if (!fsSync.existsSync(WG_TUNNEL_DIR)) fsSync.mkdirSync(WG_TUNNEL_DIR, { recursive: true });
-    fsSync.writeFileSync(confPath, confContent, 'utf8');
+    // Write as raw buffer â€” absolutely no BOM
+    fsSync.writeFileSync(confPath, Buffer.from(confContent, 'utf8'));
   } catch (err) {
     return res.status(500).json({ success: false, error: `Failed to write config: ${err.message}. Run the bridge as Administrator.` });
   }
 
-  // Install tunnel via WireGuard CLI (requires admin — the bridge should run as admin)
+  // Also write to user's temp directory as fallback for GUI import
+  const tempConfPath = path.join(process.env.TEMP || 'C:\\Temp', `${WIREGUARD_TUNNEL_NAME}.conf`);
   try {
-    // Remove existing tunnel if present
-    await runPS(`& '${WG_EXE.replace(/'/g, "''")}' /uninstalltunnelservice ${WIREGUARD_TUNNEL_NAME}`)
-      .catch(() => null); // ignore error if tunnel didn't exist
+    fsSync.writeFileSync(tempConfPath, Buffer.from(confContent, 'utf8'));
+  } catch { /* temp write failure is non-fatal */ }
 
-    // Install & start the tunnel service
+  // Install tunnel via WireGuard CLI (requires admin — bridge must run as Administrator)
+  try {
+    // Remove existing tunnel if present (ignore error if not installed)
+    await runPS(`& '${WG_EXE.replace(/'/g, "''")}' /uninstalltunnelservice ${WIREGUARD_TUNNEL_NAME}`)
+      .catch(() => null);
+
+    // Install & start the tunnel service from ProgramData location
     await runPS(`& 'C:\\Program Files\\WireGuard\\wireguard.exe' /installtunnelservice '${confPath.replace(/'/g, "''")}'`);
 
     // Give it 3s to establish
     await new Promise(r => setTimeout(r, 3000));
 
-    // Verify
+    // Verify tunnel is active
     const show = await runWg('show', WIREGUARD_TUNNEL_NAME).catch(() => '');
     const active = show.includes('interface:') || show.includes('listening port');
 
@@ -1117,14 +1126,26 @@ app.post('/api/wireguard/install', async (req, res) => {
       success: true,
       tunnelActive: active,
       vpnIp,
+      confPath: tempConfPath,
       message: active
         ? `WireGuard tunnel "${WIREGUARD_TUNNEL_NAME}" is active on ${vpnIp}`
-        : `Tunnel installed but handshake pending — make sure the server added this tablet as a peer first`,
+        : `Tunnel installed but not yet active. If it stays inactive, open WireGuard app and import: ${tempConfPath}`,
     });
   } catch (err) {
-    res.status(500).json({
+    // Service install failed — config file is ready, guide user to import via GUI
+    const show = await runWg('show', WIREGUARD_TUNNEL_NAME).catch(() => '');
+    const active = show.includes('interface:') || show.includes('listening port');
+    if (active) {
+      return res.json({ success: true, tunnelActive: true, vpnIp, confPath: tempConfPath, message: `Tunnel already active on ${vpnIp}` });
+    }
+    // Return config path so wizard can show the GUI import fallback instruction
+    res.json({
       success: false,
-      error: `Failed to install tunnel: ${err.message}. Make sure WireGuard is installed and the bridge is running as Administrator.`,
+      tunnelActive: false,
+      vpnIp,
+      confPath: tempConfPath,
+      requiresGuiImport: true,
+      error: `Auto-install failed. Open WireGuard app, click Import tunnel, select: ${tempConfPath}, then Activate.`,
     });
   }
 });
@@ -1150,7 +1171,7 @@ app.post('/api/wireguard/ping', async (req, res) => {
     return res.status(400).json({ success: false, output: 'Invalid target IP address' });
   }
   try {
-    // Use ping.exe directly — avoids PowerShell alias ambiguity.
+    // Use ping.exe directly â€” avoids PowerShell alias ambiguity.
     // -n 4 = 4 packets, -w 2000 = 2s timeout per packet, -l 32 = 32-byte payload
     const output = await new Promise((resolve, reject) => {
       execFile(
@@ -1158,7 +1179,7 @@ app.post('/api/wireguard/ping', async (req, res) => {
         ['-n', '4', '-w', '2000', '-l', '32', target],
         { timeout: 20000, windowsHide: true },
         (err, stdout, stderr) => {
-          // ping.exe exits with non-zero on failure — we want the output regardless
+          // ping.exe exits with non-zero on failure â€” we want the output regardless
           // so we resolve even on error (stderr) to show the user what happened
           const out = (stdout || stderr || (err ? err.message : 'No output')).trim();
           resolve(out);
@@ -1167,7 +1188,7 @@ app.post('/api/wireguard/ping', async (req, res) => {
     });
 
     const out = String(output);
-    // Windows ping success indicators — works on EN, FR, DE, and other locales
+    // Windows ping success indicators â€” works on EN, FR, DE, and other locales
     // "TTL=" appears in every locale for successful replies
     const success = out.includes('TTL=') || out.includes('ttl=') || out.includes('bytes=');
     res.json({ success, output: out });

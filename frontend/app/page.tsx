@@ -519,9 +519,25 @@ export default function SmartAttendanceDashboard() {
     setWgBusy(true); setWgError("");
     try {
       const r = await wireguardApi.install(wgForm);
+      const data = r.data as any;
       await wgRefreshStatus();
-      setWgStep(4);
-      toast.success(r.data.message || "Tunnel activated");
+
+      if (data.requiresGuiImport) {
+        // Service install failed but config is ready — guide user to import via WireGuard GUI
+        setWgError(
+          `The tunnel service could not start automatically.\n\n` +
+          `To activate manually:\n` +
+          `1. Open the WireGuard app (search "WireGuard" in Start menu)\n` +
+          `2. Click "Import tunnel(s) from file"\n` +
+          `3. Select this file: ${data.confPath || 'C:\\Temp\\EcareAfrica.conf'}\n` +
+          `4. Click "Activate"\n\n` +
+          `Then come back here and click "Next → Test Connection".`
+        );
+        setWgStep(4);
+      } else {
+        setWgStep(4);
+        toast.success(data.message || "Tunnel activated");
+      }
     } catch (e: any) {
       setWgError(e?.response?.data?.error || e.message || "Installation failed");
     }
