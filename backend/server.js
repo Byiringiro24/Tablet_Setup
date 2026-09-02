@@ -549,8 +549,12 @@ function readableMethod(method) {
 }
 
 // Sync device time to tablet clock immediately after every successful connection.
-// Runs fire-and-forget so it never blocks the connect response.
+// Cooldown of 60s prevents repeated syncs during rapid reconnect cycles.
+let lastTimeSyncAt = 0;
 function syncTimeAfterConnect() {
+  const now = Date.now();
+  if (now - lastTimeSyncAt < 60000) return; // skip if synced less than 60s ago
+  lastTimeSyncAt = now;
   sendCommand('SYNC_TIME', 10000)
     .then((r) => {
       if (r.success) console.log(`[Time Sync] Device clock synced to tablet time: ${new Date().toISOString()}`);
