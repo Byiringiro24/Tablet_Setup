@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { FormEvent, useCallback, useEffect, useRef, useMemo, useState } from "react";
 import toast from "react-hot-toast";
@@ -13,10 +13,10 @@ import {
 import { dashboardApi, deviceApi, studentApi, wireguardApi } from "@/lib/api";
 
 const DEV_PASSWORD = "admin1234";
-// Default server endpoint â€” overridden at runtime by reading /api/health from backend
+// Default server endpoint ? overridden at runtime by reading /api/health from backend
 const WG_SERVER_ENDPOINT_DEFAULT = "169.58.124.150:51820";
 
-/* â”€â”€â”€ Types â”€â”€â”€ */
+/*  Types  */
 type Stats = { totalStudents: number; totalDevices: number; onlineDevices: number; attendanceToday: number; lateStudents: number; totalLogs: number };
 type DeviceStatus = { connected?: boolean; deviceId?: string; ipAddress?: string; port?: number; handle?: number; serialNumber?: string; productName?: string; productCode?: string; users?: number; logs?: number; faces?: number; fingerprints?: number; cards?: number };
 type AttendanceLog = { id: string; studentId?: string; studentDeviceId?: string; studentName: string; className?: string; section?: string; deviceId: string; authenticationMethod: string; timestamp: string; status: string; photoUrl?: string };
@@ -27,7 +27,7 @@ const emptyStats: Stats = { totalStudents: 0, totalDevices: 0, onlineDevices: 0,
 const classes = ["S1","S2","S3","S4","S5 MPC","S5 MEG","S5 PCB","S6 MPC","S6 MEG","S6 PCB"];
 type NavView = "dashboard" | "students";
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• Helper components (defined before main to avoid Turbopack SSR hoisting issues) â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+/* ****************** Helper components (defined before main to avoid Turbopack SSR hoisting issues) ****************** */
 
 function NavItem({ icon, label, active = false, onClick }: { icon: React.ReactNode; label: string; active?: boolean; onClick?: () => void }) {
   return (
@@ -102,18 +102,18 @@ function AutoConnectBadge({ status, attempt }: { status: "connecting"|"connected
   );
   if (status === "connecting") return (
     <span className="flex animate-pulse items-center gap-1.5 rounded-full bg-cyan-500/20 px-3 py-1 text-sm text-cyan-300">
-      <FiLoader className="shrink-0 animate-spin" /> Connectingâ€¦
+      <FiLoader className="shrink-0 animate-spin" /> Connecting...
     </span>
   );
   return (
     <span className="flex animate-pulse items-center gap-1.5 rounded-full bg-amber-500/20 px-3 py-1 text-sm text-amber-300">
-      <FiWifiOff className="shrink-0" /> Reconnecting{attempt > 0 ? ` #${attempt + 1}` : ""}â€¦
+      <FiWifiOff className="shrink-0" /> Reconnecting{attempt > 0 ? ` #${attempt + 1}` : ""}...
     </span>
   );
 }
 
 export default function SmartAttendanceDashboard() {
-  /* â”€â”€ data â”€â”€ */
+  /*  data  */
   const [stats, setStats]           = useState<Stats>(emptyStats);
   const [device, setDevice]         = useState<DeviceStatus | null>(null);
   const [logs, setLogs]             = useState<AttendanceLog[]>([]);
@@ -124,7 +124,7 @@ export default function SmartAttendanceDashboard() {
   const [readMode, setReadMode]     = useState(0);
   const [activeView, setActiveView] = useState<NavView>("dashboard");
 
-  /* â”€â”€ device form â€” loaded from backend saved config on mount â”€â”€ */
+  /*  device form  loaded from backend saved config on mount  */
   const [deviceForm, setDeviceForm] = useState({ deviceId: "DV-KGL-01", ipAddress: "10.23.194.16", port: 5005, license: 1261, location: "Main Gate" });
   const deviceFormRef = useRef(deviceForm);
   useEffect(() => { deviceFormRef.current = deviceForm; }, [deviceForm]);
@@ -151,10 +151,10 @@ export default function SmartAttendanceDashboard() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* â”€â”€ student form â”€â”€ */
+  /*  student form  */
   const [studentForm, setStudentForm] = useState({ name: "", studentId: "RW-", studentDeviceId: "", className: "S1", section: "A", assignedDeviceId: "DV-KGL-01", parentPhone: "" });
 
-  /* â”€â”€ live attendance flash â”€â”€ */
+  /*  live attendance flash  */
   const [liveLog, setLiveLog] = useState<AttendanceLog | null>(null);
   const liveTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const knownLogIds    = useRef<Set<string>>(new Set());
@@ -218,7 +218,7 @@ export default function SmartAttendanceDashboard() {
     }
   }
 
-  // Connect SSE â€” all event handlers call through refs so they're never stale
+  // Connect SSE ? all event handlers call through refs so they're never stale
   function connectSSE() {
     if (sseRef.current) { sseRef.current.close(); sseRef.current = null; }
     if (sseReconnectRef.current) { clearTimeout(sseReconnectRef.current); sseReconnectRef.current = null; }
@@ -245,7 +245,7 @@ export default function SmartAttendanceDashboard() {
         if (status?.connected === false) {
           setDevice(null);
           setConnectStatus("retrying");
-          toast.error("Device went offline â€” reconnecting...", { id: "ac" });
+          toast.error("Device went offline  -  reconnecting...", { id: "ac" });
           if (autoConnectRef.current) clearTimeout(autoConnectRef.current);
           attemptConnect(0);
         }
@@ -262,7 +262,7 @@ export default function SmartAttendanceDashboard() {
     sseRef.current = es;
   }
 
-  /* â”€â”€ sidebar auto-hide â”€â”€ */
+  /*  sidebar auto-hide  */
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [sidebarLocked,  setSidebarLocked]  = useState(false);
   const sidebarTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -288,7 +288,7 @@ export default function SmartAttendanceDashboard() {
   const handleSidebarEnter = () => { setSidebarLocked(true); setSidebarVisible(true); if (sidebarTimerRef.current) clearTimeout(sidebarTimerRef.current); };
   const handleSidebarLeave = () => { setSidebarLocked(false); resetSidebarTimer(); };
 
-  /* â”€â”€ auto-connect â”€â”€ */
+  /*  auto-connect  */
   const [connectStatus,  setConnectStatus]  = useState<"connecting"|"connected"|"retrying">("connecting");
   const [connectAttempt, setConnectAttempt] = useState(0);
   const autoConnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -321,7 +321,7 @@ export default function SmartAttendanceDashboard() {
     setConnectStatus(attempt === 0 ? "connecting" : "retrying");
     if (attempt === 0) toast.loading("Connecting to device...", { id: "ac" });
     try {
-      // Always use saved config â€” never send form values so we never overwrite the saved IP
+      // Always use saved config ? never send form values so we never overwrite the saved IP
       const res = await deviceApi.connectSaved();
       if (!mountedRef.current) return;
       setDevice(res.data.data);
@@ -332,7 +332,7 @@ export default function SmartAttendanceDashboard() {
     } catch {
       if (!mountedRef.current) return;
       setDevice(null); setConnectStatus("retrying");
-      if (attempt === 0 || attempt % 5 === 0) toast.error(`Device unreachable â€” retrying (attempt ${attempt + 1})...`, { id: "ac" });
+      if (attempt === 0 || attempt % 5 === 0) toast.error(`Device unreachable  -  retrying (attempt ${attempt + 1})...`, { id: "ac" });
       const delay = Math.min(3000 * Math.pow(1.5, Math.min(attempt, 8)), 30000);
       autoConnectRef.current = setTimeout(() => attemptConnect(attempt + 1), delay);
     }
@@ -349,7 +349,7 @@ export default function SmartAttendanceDashboard() {
       } catch {
         if (!mountedRef.current) return;
         setDevice(null); setConnectStatus("retrying");
-        toast.error("Device connection lost â€” reconnecting...", { id: "ac" });
+        toast.error("Device connection lost  -  reconnecting...", { id: "ac" });
         attemptConnect(0);
       }
     }, 15000);
@@ -357,7 +357,7 @@ export default function SmartAttendanceDashboard() {
 
   const connected = Boolean(device?.connected);
 
-  /* â”€â”€ developer modal â”€â”€ */
+  /*  developer modal  */
   const [devStep,          setDevStep]         = useState<"closed"|"password"|"settings"|"wireguard">("closed");
   const [devPendingAction, setDevPendingAction] = useState<"settings"|"wireguard">("settings");
   const [devPassword,      setDevPassword]      = useState("");
@@ -365,7 +365,7 @@ export default function SmartAttendanceDashboard() {
   const [showDevPassword,  setShowDevPassword]  = useState(false);
   const [devForm,          setDevForm]          = useState({ ...deviceForm });
 
-  /* â”€â”€ wireguard wizard â”€â”€ */
+  /*  wireguard wizard  */
   type WgStatus = { installed: boolean; isAdmin: boolean; tunnelActive: boolean; vpnIp: string|null; publicKey: string|null; lastHandshake: string|null };
   const [wgStatus,     setWgStatus]     = useState<WgStatus|null>(null);
   const [wgStep,       setWgStep]       = useState<1|2|3|4|5>(1);
@@ -374,7 +374,7 @@ export default function SmartAttendanceDashboard() {
   const [wgKeys,       setWgKeys]       = useState<{privateKey:string;publicKey:string}|null>(null);
   const [wgAllowedIPs, setWgAllowedIPs] = useState("10.0.0.0/16"); // from health endpoint
   const [wgForm,       setWgForm]       = useState({ serverPublicKey: "", serverEndpoint: WG_SERVER_ENDPOINT_DEFAULT, vpnIp: "10.0.0.2", dns: "1.1.1.1" });
-  const [wgPingTarget, setWgPingTarget] = useState("10.0.0.1"); // server VPN IP â€” updated from health on wizard open
+  const [wgPingTarget, setWgPingTarget] = useState("10.0.0.1"); // server VPN IP ? updated from health on wizard open
   const [wgPingResult, setWgPingResult] = useState<{success:boolean;output:string}|null>(null);
   const [wgDiagnosis,  setWgDiagnosis]  = useState<any | null>(null);
   const [wgDiagBusy,   setWgDiagBusy]  = useState(false);
@@ -410,7 +410,7 @@ export default function SmartAttendanceDashboard() {
       setDevPasswordError("");
       setDevPassword("");
       if (devPendingAction === "wireguard") {
-        // Password correct â€” now load WireGuard status and open wizard
+        // Password correct ? now load WireGuard status and open wizard
         loadAndOpenWgWizard();
       } else {
         setDevStep("settings");
@@ -423,12 +423,12 @@ export default function SmartAttendanceDashboard() {
 
   function saveDevSettings(e: FormEvent) {
     e.preventDefault();
-    // Capture form values at submit time â€” don't rely on state which may not have flushed
+    // Capture form values at submit time ? don't rely on state which may not have flushed
     const newConfig = { ...devForm };
     setDeviceForm(newConfig);
     deviceFormRef.current = newConfig;
     closeDevModal();
-    toast.loading("Saving settings & reconnectingâ€¦", { id: "ac" });
+    toast.loading("Saving settings & reconnecting...", { id: "ac" });
     if (autoConnectRef.current) clearTimeout(autoConnectRef.current);
     // Pass saveConfig:true so backend saves + updates activeDeviceConfig in memory
     deviceApi.connect({ ...newConfig, timeoutMs: 10000, saveConfig: true })
@@ -444,12 +444,12 @@ export default function SmartAttendanceDashboard() {
         if (!mountedRef.current) return;
         setDevice(null);
         setConnectStatus("retrying");
-        toast.error(`Cannot reach ${newConfig.ipAddress} â€” retryingâ€¦`, { id: "ac" });
+        toast.error(`Cannot reach ${newConfig.ipAddress}  -  retrying...`, { id: "ac" });
         setTimeout(() => attemptConnect(0), 500);
       });
   }
 
-  /* â”€â”€ WireGuard wizard helpers â”€â”€ */
+  /*  WireGuard wizard helpers  */
   async function openWgWizard() {
     // Gate behind the same admin password as Developer settings
     setDevPassword(""); setDevPasswordError(""); setShowDevPassword(false);
@@ -483,7 +483,7 @@ export default function SmartAttendanceDashboard() {
       setWgStatus(s);
       setWgInstalled(s.installed);
       if (s.publicKey) {
-        setWgKeys({ privateKey: "â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢", publicKey: s.publicKey });
+        setWgKeys({ privateKey: "********************************************", publicKey: s.publicKey });
         setWgStep(s.tunnelActive ? 4 : 3);
       } else if (s.installed) {
         setWgStep(2);
@@ -532,7 +532,7 @@ export default function SmartAttendanceDashboard() {
       await wgRefreshStatus();
 
       if (data.requiresGuiImport) {
-        // Service install failed but config is ready â€” guide user to import via WireGuard GUI
+        // Service install failed but config is ready ? guide user to import via WireGuard GUI
         setWgError(
           `The tunnel service could not start automatically.\n\n` +
           `To activate manually:\n` +
@@ -540,7 +540,7 @@ export default function SmartAttendanceDashboard() {
           `2. Click "Import tunnel(s) from file"\n` +
           `3. Select this file: ${data.confPath || 'C:\\Temp\\EcareAfrica.conf'}\n` +
           `4. Click "Activate"\n\n` +
-          `Then come back here and click "Next â†’ Test Connection".`
+          `Then come back here and click "Next: Test Connection".`
         );
         setWgStep(4);
       } else {
@@ -581,7 +581,7 @@ export default function SmartAttendanceDashboard() {
     try {
       const r = await wireguardApi.syncKey();
       const data = r.data as any;
-      toast.success("Keys synced — " + (data.activeKey?.slice(0, 16) + "…"));
+      toast.success("Keys synced  -  " + (data.activeKey?.slice(0, 16) + "..."));
       await wgRefreshStatus();
       await wgDiagnose();
     } catch (e: any) {
@@ -589,6 +589,8 @@ export default function SmartAttendanceDashboard() {
     }
     setWgDiagBusy(false);
   }
+
+  async function checkServices() {
     try {
       const r = await wireguardApi.getServicesStatus();
       setSvcStatus(r.data as any);
@@ -598,15 +600,15 @@ export default function SmartAttendanceDashboard() {
   async function installServices() {
     setSvcInstalling(true);
     try {
-      toast.loading("Installing services — this may take up to 2 minutes...", { id: "svc" });
+      toast.loading("Installing services  -  this may take up to 2 minutes...", { id: "svc" });
       const r = await wireguardApi.installServices();
       const data = r.data as any;
       toast.dismiss("svc");
       if (data.success) {
-        toast.success("Services installed — bridge and frontend now start automatically on boot");
+        toast.success("Services installed  -  bridge and frontend now start automatically on boot");
         await checkServices();
       } else {
-        toast.error("Install had issues — check output below");
+        toast.error("Install had issues  -  check output below");
       }
       setSvcStatus(prev => prev ?? { bridgeService: "Unknown", frontendService: "Unknown", bothRunning: false });
     } catch (e: any) {
@@ -623,9 +625,9 @@ export default function SmartAttendanceDashboard() {
       const data = r.data as { success: boolean; output: string };
       setWgPingResult(data);
       if (data.success) {
-        toast.success("VPN verified — school server will connect automatically within 30 seconds", { duration: 5000 });
+        toast.success("VPN verified  -  school server will connect automatically within 30 seconds", { duration: 5000 });
       } else {
-        toast.error(`Ping ${wgPingTarget} failed — tunnel may not be active yet`);
+        toast.error(`Ping ${wgPingTarget} failed  -  tunnel may not be active yet`);
       }
     } catch (e: any) {
       setWgPingResult({ success: false, output: e?.response?.data?.output || e.message || "Ping request failed" });
@@ -639,7 +641,7 @@ export default function SmartAttendanceDashboard() {
     setTimeout(() => setCopiedKey(false), 2000);
   }
 
-  /* â”€â”€ data actions â”€â”€ */
+  /*  data actions  */
   async function refreshDashboard() {
     setBusy(true);
     try {
@@ -650,14 +652,14 @@ export default function SmartAttendanceDashboard() {
   }
 
   async function pullLogs() {
-    setBusy(true); toast.loading("Pulling logsâ€¦", { id: "logs" });
+    setBusy(true); toast.loading("Pulling logs...", { id: "logs" });
     try { const r = await deviceApi.pullLogs(readMode); toast.success(`Cached: ${r.data.data?.count || 0} logs`, { id: "logs" }); await refreshDashboard(); }
     catch (e: any) { toast.error(e?.response?.data?.error || "Pull logs failed", { id: "logs" }); }
     finally { setBusy(false); }
   }
 
   async function pullUsers() {
-    setBusy(true); toast.loading("Pulling usersâ€¦", { id: "users" });
+    setBusy(true); toast.loading("Pulling users...", { id: "users" });
     try { await deviceApi.pullUsers(); const r = await deviceApi.getUsers(); setDeviceUsers(r.data.data?.users || []); toast.success(`Cached: ${r.data.data?.count || 0} users`, { id: "users" }); }
     catch (e: any) { toast.error(e?.response?.data?.error || "Pull users failed", { id: "users" }); }
     finally { setBusy(false); }
@@ -671,7 +673,7 @@ export default function SmartAttendanceDashboard() {
   }
 
   async function registerStudent(event: FormEvent) {
-    event.preventDefault(); setBusy(true); toast.loading("Registeringâ€¦", { id: "stu" });
+    event.preventDefault(); setBusy(true); toast.loading("Registering...", { id: "stu" });
     try {
       const r = await studentApi.create({ ...studentForm, pushToDevice: true });
       if (!r.data.success) throw new Error(r.data.error || "Push failed");
@@ -683,7 +685,7 @@ export default function SmartAttendanceDashboard() {
   }
 
   async function pushAllStudents() {
-    setBusy(true); toast.loading("Pushing all studentsâ€¦", { id: "push" });
+    setBusy(true); toast.loading("Pushing all students...", { id: "push" });
     try { const r = await deviceApi.pushStudents(); toast.success(`Pushed ${r.data.data?.pushed || 0} students`, { id: "push" }); await pullUsers(); }
     catch (e: any) { toast.error(e?.response?.data?.error || "Push failed", { id: "push" }); }
     finally { setBusy(false); }
@@ -695,11 +697,11 @@ export default function SmartAttendanceDashboard() {
     return logs.filter((l) => `${l.studentName} ${l.studentId} ${l.className}`.toLowerCase().includes(q));
   }, [logs, query]);
 
-  /* â”€â”€â”€ RENDER â”€â”€â”€ */
+  /*  RENDER  */
   return (
     <div className="fixed inset-0 flex overflow-hidden bg-[#070b14]">
 
-      {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â• SIDEBAR â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
+      {/* ?*??*??*??*??*??*??*??*??*??*??*??*??*??*? SIDEBAR ?*??*??*??*??*??*??*??*??*??*??*??*??*??*? */}
       {!sidebarVisible && (
         <button
           onClick={() => { setSidebarVisible(true); resetSidebarTimer(); }}
@@ -737,7 +739,7 @@ export default function SmartAttendanceDashboard() {
             <NavItem icon={<FiShield />}   label="Users & Roles" />
           </nav>
 
-          {/* â”€â”€ Sidebar panel content switches per view â”€â”€ */}
+          {/* ?? Sidebar panel content switches per view ?? */}
           {activeView === "dashboard" && (
             <div className="flex flex-1 flex-col min-h-0">
               {/* Attendance logs header */}
@@ -757,18 +759,18 @@ export default function SmartAttendanceDashboard() {
                   </button>
                 </div>
               </div>
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Searchâ€¦"
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search..."
                 className="mb-2 w-full rounded-xl border border-slate-700 bg-slate-800/90 px-3 py-2 text-xs text-slate-100 outline-none placeholder:text-slate-500 focus:border-cyan-400" />
               <div className="flex-1 overflow-y-auto space-y-2 pr-0.5">
                 {filteredLogs.length === 0
-                  ? <p className="pt-8 text-center text-xs text-slate-600">No logs yet â€” pull from device</p>
+                  ? <p className="pt-8 text-center text-xs text-slate-600">No logs yet  -  pull from device</p>
                   : filteredLogs.map((log) => (
                     <div key={log.id} className="rounded-xl border border-slate-800 bg-slate-800/60 p-3 text-xs">
                       <div className="flex items-center justify-between gap-1">
                         <span className="font-semibold text-slate-100 truncate">{log.studentName}</span>
                         <StatusPill status={log.status} small />
                       </div>
-                      <div className="mt-0.5 text-slate-400">{log.studentId || log.studentDeviceId}{log.className ? ` Â· ${log.className}` : ""}</div>
+                      <div className="mt-0.5 text-slate-400">{log.studentId || log.studentDeviceId}{log.className ? ` . ${log.className}` : ""}</div>
                       <div className="mt-0.5 flex justify-between text-slate-500">
                         <span>{log.authenticationMethod}</span>
                         <span>{new Date(log.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
@@ -847,15 +849,15 @@ export default function SmartAttendanceDashboard() {
         </div>
       </aside>
 
-      {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â• MAIN AREA â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
+      {/* ?*??*??*??*??*??*??*??*??*??*??*??*??*??*? MAIN AREA ?*??*??*??*??*??*??*??*??*??*??*??*??*??*? */}
       <main className="relative flex flex-1 flex-col overflow-hidden">
 
-        {/* â”€â”€ LIVE ATTENDANCE FLASH (takes over whole main area) â”€â”€ */}
+        {/* ?? LIVE ATTENDANCE FLASH (takes over whole main area) ?? */}
         {liveLog && (
           <LiveAttendanceScreen log={liveLog} onDismiss={dismissLive} />
         )}
 
-        {/* â”€â”€ NORMAL DASHBOARD (hidden while flash is showing) â”€â”€ */}
+        {/* ?? NORMAL DASHBOARD (hidden while flash is showing) ?? */}
         {!liveLog && (
           <div className="flex h-full flex-col overflow-hidden">
 
@@ -863,7 +865,7 @@ export default function SmartAttendanceDashboard() {
             <div className="flex shrink-0 items-center justify-between border-b border-slate-800 bg-slate-900/80 px-6 py-3 backdrop-blur-sm">
               <div>
                 <h2 className="text-xl font-bold text-white">School Attendance Monitoring</h2>
-                <p className="text-xs text-slate-500">FK biometric Â· real-time tracking</p>
+                <p className="text-xs text-slate-500">FK biometric . real-time tracking</p>
               </div>
               <div className="flex items-center gap-3">
                 <AutoConnectBadge status={connectStatus} attempt={connectAttempt} />
@@ -875,7 +877,7 @@ export default function SmartAttendanceDashboard() {
               </div>
             </div>
 
-            {/* Content â€” fills remaining height, no scroll */}
+            {/* Content ? fills remaining height, no scroll */}
             <div className="flex flex-1 flex-col overflow-hidden p-5 gap-5">
 
               {/* Stat cards row */}
@@ -897,7 +899,7 @@ export default function SmartAttendanceDashboard() {
                 ))}
               </div>
 
-              {/* Bottom row â€” summary + device status, fills remaining space */}
+              {/* Bottom row ? summary + device status, fills remaining space */}
               <div className="flex flex-1 min-h-0 gap-5">
 
                 {/* Today summary */}
@@ -919,7 +921,7 @@ export default function SmartAttendanceDashboard() {
                   <div className="flex-1 space-y-3 text-sm">
                     <InfoRow label="IP Address" value={deviceForm.ipAddress} />
                     <InfoRow label="Location"   value={deviceForm.location} />
-                    <InfoRow label="Status" value={connected ? "Online" : connectStatus === "connecting" ? "Connectingâ€¦" : "Offline"} valueClass={connected ? "text-green-400" : "text-amber-400"} />
+                    <InfoRow label="Status" value={connected ? "Online" : connectStatus === "connecting" ? "Connecting..." : "Offline"} valueClass={connected ? "text-green-400" : "text-amber-400"} />
                     {device?.serialNumber && <InfoRow label="Serial"   value={device.serialNumber} />}
                     {(device?.productName || device?.productCode) && <InfoRow label="Product" value={device.productName || device.productCode || ""} />}
                     {device?.users != null && <InfoRow label="Users"   value={String(device.users)} />}
@@ -935,7 +937,7 @@ export default function SmartAttendanceDashboard() {
         )}
       </main>
 
-      {/* â•â•â•â•â•â•â•â•â•â• DEVELOPER PASSWORD MODAL â•â•â•â•â•â•â•â•â•â• */}
+      {/* ?*??*??*??*??*??*??*??*??*??*? DEVELOPER PASSWORD MODAL ?*??*??*??*??*??*??*??*??*??*? */}
       {devStep === "password" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-900 p-8 shadow-2xl">
@@ -969,7 +971,7 @@ export default function SmartAttendanceDashboard() {
         </div>
       )}
 
-      {/* â•â•â•â•â•â•â•â•â•â• DEVELOPER SETTINGS MODAL â•â•â•â•â•â•â•â•â•â• */}
+      {/* ?*??*??*??*??*??*??*??*??*??*? DEVELOPER SETTINGS MODAL ?*??*??*??*??*??*??*??*??*??*? */}
       {devStep === "settings" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
           <div className="w-full max-w-lg rounded-2xl border border-slate-700 bg-slate-900 p-8 shadow-2xl">
@@ -998,10 +1000,10 @@ export default function SmartAttendanceDashboard() {
                 <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-4">
                   <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Live Device Info</p>
                   <div className="grid grid-cols-2 gap-3 text-sm">
-                    <div><p className="text-slate-500">Serial</p><p className="font-medium text-slate-200">{device.serialNumber || "â€”"}</p></div>
-                    <div><p className="text-slate-500">Product</p><p className="font-medium text-slate-200">{device.productName || device.productCode || "â€”"}</p></div>
-                    <div><p className="text-slate-500">Users</p><p className="font-medium text-slate-200">{device.users ?? "â€”"}</p></div>
-                    <div><p className="text-slate-500">Logs</p><p className="font-medium text-slate-200">{device.logs ?? "â€”"}</p></div>
+                    <div><p className="text-slate-500">Serial</p><p className="font-medium text-slate-200">{device.serialNumber || " - "}</p></div>
+                    <div><p className="text-slate-500">Product</p><p className="font-medium text-slate-200">{device.productName || device.productCode || " - "}</p></div>
+                    <div><p className="text-slate-500">Users</p><p className="font-medium text-slate-200">{device.users ?? " - "}</p></div>
+                    <div><p className="text-slate-500">Logs</p><p className="font-medium text-slate-200">{device.logs ?? " - "}</p></div>
                   </div>
                 </div>
               )}
@@ -1014,7 +1016,7 @@ export default function SmartAttendanceDashboard() {
         </div>
       )}
 
-      {/* â•â•â•â•â•â•â•â•â•â• WIREGUARD VPN WIZARD MODAL â•â•â•â•â•â•â•â•â•â• */}
+      {/* ?*??*??*??*??*??*??*??*??*??*? WIREGUARD VPN WIZARD MODAL ?*??*??*??*??*??*??*??*??*??*? */}
       {devStep === "wireguard" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
           <div className="w-full max-w-2xl rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl flex flex-col max-h-[90vh]">
@@ -1025,7 +1027,7 @@ export default function SmartAttendanceDashboard() {
                 <div className="rounded-xl bg-cyan-500/15 p-3 text-cyan-400"><FiShield className="text-xl" /></div>
                 <div>
                   <h2 className="text-xl font-bold">WireGuard VPN Setup</h2>
-                  <p className="text-sm text-slate-400">Secure tunnel: Tablet â†” Server (169.58.124.150)</p>
+                  <p className="text-sm text-slate-400">Secure tunnel: Tablet and Server (169.58.124.150)</p>
                 </div>
               </div>
               <button type="button" onClick={closeDevModal} className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white"><FiX /></button>
@@ -1050,7 +1052,7 @@ export default function SmartAttendanceDashboard() {
                     <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold shrink-0
                       ${wgStep === s.n ? "bg-cyan-500 text-slate-900" :
                         s.n < wgStep ? "bg-emerald-500 text-slate-900" : "bg-slate-700 text-slate-400"}`}>
-                      {s.n < wgStep ? "âœ“" : s.n}
+                      {s.n < wgStep ? "v" : s.n}
                     </span>
                     {s.label}
                   </button>
@@ -1062,7 +1064,7 @@ export default function SmartAttendanceDashboard() {
             {/* Step content */}
             <div className="flex-1 overflow-y-auto px-8 py-6 space-y-5">
 
-              {/* Error banner — whitespace-pre-wrap so \n renders as line breaks */}
+              {/* Error banner  whitespace-pre-wrap so \n renders as line breaks */}
               {wgError && (
                 <div className="flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
                   <FiAlertTriangle className="mt-0.5 shrink-0 text-base" />
@@ -1070,7 +1072,7 @@ export default function SmartAttendanceDashboard() {
                 </div>
               )}
 
-              {/* Not-admin warning — shown on all steps when bridge is not elevated */}
+              {/* Not-admin warning  shown on all steps when bridge is not elevated */}
               {wgStatus && wgStatus.isAdmin === false && (
                 <div className="flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
                   <FiAlertTriangle className="mt-0.5 shrink-0 text-base" />
@@ -1087,7 +1089,7 @@ export default function SmartAttendanceDashboard() {
                 </div>
               )}
 
-              {/* â”€â”€ STEP 1: Install â”€â”€ */}
+              {/* ?? STEP 1: Install ?? */}
               {wgStep === 1 && (
                 <div className="space-y-5">
                   <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-5 space-y-3">
@@ -1128,15 +1130,15 @@ export default function SmartAttendanceDashboard() {
                   <div className="flex gap-3">
                     <button onClick={async () => { await wgRefreshStatus(); if (wgInstalled) setWgStep(2); }} disabled={wgBusy}
                       className="secondary-action flex-1 py-2.5 text-sm">
-                      {wgBusy ? <><FiLoader className="animate-spin" /> Checkingâ€¦</> : <><FiRefreshCw /> Check Again</>}
+                      {wgBusy ? <><FiLoader className="animate-spin" /> Checking...</> : <><FiRefreshCw /> Check Again</>}
                     </button>
                     {wgInstalled && (
                       <button onClick={() => setWgStep(2)} className="primary-action flex-1 py-2.5 text-sm">
-                        WireGuard is installed â†’ Next <FiChevronRight />
+                        WireGuard is installed  -  Next <FiChevronRight />
                       </button>
                     )}
 
-                  {/* Services panel — install bridge + frontend as auto-start Windows services */}
+                  {/* Services panel  install bridge + frontend as auto-start Windows services */}
                   <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-5 space-y-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 text-base font-bold text-white">
@@ -1148,7 +1150,7 @@ export default function SmartAttendanceDashboard() {
                     </div>
                     <p className="text-sm text-slate-400">
                       Install the bridge and frontend as Windows services so they start automatically
-                      on every boot — no manual "Run as Administrator" ever needed again.
+                      on every boot  -  no manual "Run as Administrator" ever needed again.
                     </p>
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       {[
@@ -1178,13 +1180,13 @@ export default function SmartAttendanceDashboard() {
                     </div>
                     {svcStatus?.bothRunning ? (
                       <div className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
-                        <FiCheckCircle /> Both services running — auto-start active. Tablet works after every reboot.
+                        <FiCheckCircle /> Both services running  -  auto-start active. Tablet works after every reboot.
                       </div>
                     ) : (
                       <button onClick={installServices} disabled={svcInstalling}
                         className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 py-3 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50 transition">
                         {svcInstalling
-                          ? <><FiLoader className="animate-spin" /> Installing (up to 2 min)…</>
+                          ? <><FiLoader className="animate-spin" /> Installing (up to 2 min)...</>
                           : <><FiSettings /> Install as Auto-Start Windows Services</>}
                       </button>
                     )}
@@ -1193,11 +1195,10 @@ export default function SmartAttendanceDashboard() {
                       <code className="font-mono">INSTALL (double-click me).bat</code> in the Tablet Setup folder.
                     </p>
                   </div>
-                  </div>
                 </div>
               )}
 
-              {/* â”€â”€ STEP 2: Generate Keys â”€â”€ */}
+              {/* ?? STEP 2: Generate Keys ?? */}
               {wgStep === 2 && (
                 <div className="space-y-5">
                   <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-5 space-y-2">
@@ -1219,13 +1220,13 @@ export default function SmartAttendanceDashboard() {
                     <div className="space-y-3">
                       <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-4 space-y-3">
                         <div>
-                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Private Key (stays on tablet â€” never share)</p>
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Private Key (stays on tablet  -  never share)</p>
                           <code className="block truncate rounded-lg bg-slate-900 px-3 py-2 text-xs text-red-300 font-mono border border-red-500/20">
-                            {wgKeys.privateKey === "â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" ? "â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" : wgKeys.privateKey}
+                            {wgKeys.privateKey === "********************************************" ? "********************************************" : wgKeys.privateKey}
                           </code>
                         </div>
                         <div>
-                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Public Key â€” copy and paste this on the server</p>
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Public Key  -  copy and paste this on the server</p>
                           <div className="flex items-center gap-2">
                             <code className="flex-1 truncate rounded-lg bg-slate-900 px-3 py-2 text-xs text-cyan-300 font-mono border border-cyan-500/20">
                               {wgKeys.publicKey}
@@ -1241,16 +1242,16 @@ export default function SmartAttendanceDashboard() {
                       <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 space-y-2 text-sm text-amber-200">
                         <p className="font-semibold flex items-center gap-2"><FiTerminal /> Now register this tablet on the school server:</p>
                         <p className="text-xs text-amber-300/80">
-                          Go to the <strong>Super Admin portal â†’ Hardware â†’ VPN Setup tab</strong>:
+                          Go to the <strong>Super Admin portal, Hardware, VPN Setup tab</strong>:
                         </p>
                         <ol className="list-decimal ml-4 space-y-1.5 text-xs text-amber-200">
-                          <li>The <strong>Step 1 (Server Info)</strong> panel shows the server public key and next available VPN IP â€” note these down</li>
+                          <li>The <strong>Step 1 (Server Info)</strong> panel shows the server public key and next available VPN IP  -  note these down</li>
                           <li>In the <strong>Step 2 (Register Tablet)</strong> panel, paste the tablet public key above and click <strong>Add Peer to VPN</strong></li>
-                          <li>After adding, the portal shows the server public key, server endpoint, and your assigned VPN IP â€” copy these</li>
-                          <li>Come back here and click <strong>Next â†’ Configure</strong>, then paste those values</li>
+                          <li>After adding, the portal shows the server public key, server endpoint, and your assigned VPN IP  -  copy these</li>
+                          <li>Come back here and click <strong>Next: Configure</strong>, then paste those values</li>
                         </ol>
                         <div className="mt-2 rounded-lg bg-slate-900/80 p-3 text-xs text-emerald-300 font-mono">
-                          Tablet public key copied above â†’ paste in Super Admin â†’ VPN Setup â†’ Step 2
+                          Tablet public key copied above. Paste in Super Admin, VPN Setup, Step 2
                         </div>
                       </div>
                     </div>
@@ -1259,18 +1260,18 @@ export default function SmartAttendanceDashboard() {
                   <div className="flex gap-3">
                     <button onClick={wgGenerateKeys} disabled={wgBusy}
                       className="primary-action flex-1 py-2.5 text-sm">
-                      {wgBusy ? <><FiLoader className="animate-spin" /> Generatingâ€¦</> : <><FiLock /> {wgKeys ? "Regenerate Keys" : "Generate Keys"}</>}
+                      {wgBusy ? <><FiLoader className="animate-spin" /> Generating...</> : <><FiLock /> {wgKeys ? "Regenerate Keys" : "Generate Keys"}</>}
                     </button>
                     {wgKeys && (
                       <button onClick={() => setWgStep(3)} className="secondary-action flex-1 py-2.5 text-sm">
-                        Next â†’ Configure <FiChevronRight />
+                        <FiChevronRight /> Configure
                       </button>
                     )}
                   </div>
                 </div>
               )}
 
-              {/* â”€â”€ STEP 3: Configure â”€â”€ */}
+              {/* ?? STEP 3: Configure ?? */}
               {wgStep === 3 && (
                 <div className="space-y-5">
                   <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-5 space-y-2">
@@ -1289,7 +1290,7 @@ export default function SmartAttendanceDashboard() {
                       </label>
                       <input type="text" value={wgForm.serverPublicKey}
                         onChange={(e) => setWgForm({ ...wgForm, serverPublicKey: e.target.value.trim() })}
-                        placeholder="Paste server public key (from Super Admin â†’ VPN Setup â†’ Step 1)"
+                        placeholder="Paste server public key (from Super Admin, VPN Setup, Step 1)"
                         className="form-field font-mono text-xs" />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
@@ -1318,7 +1319,7 @@ export default function SmartAttendanceDashboard() {
 
                   {/* Config preview */}
                   <div className="rounded-xl border border-slate-700 bg-slate-900/80 p-4">
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Config Preview â€” EcareAfrica.conf</p>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Config Preview  -  EcareAfrica.conf</p>
                     <pre className="text-xs font-mono text-emerald-300 whitespace-pre-wrap overflow-x-auto leading-relaxed">{`[Interface]
 PrivateKey = <saved on tablet>
 Address    = ${wgForm.vpnIp || "10.0.0.2"}/32
@@ -1332,16 +1333,16 @@ PersistentKeepalive = 25`}</pre>
                   </div>
 
                   <div className="flex gap-3">
-                    <button onClick={() => setWgStep(2)} className="secondary-action py-2.5 text-sm px-5">â† Back</button>
+                    <button onClick={() => setWgStep(2)} className="secondary-action py-2.5 text-sm px-5">Back</button>
                     <button onClick={wgInstall} disabled={wgBusy || !wgForm.serverPublicKey}
                       className="primary-action flex-1 py-2.5 text-sm">
-                      {wgBusy ? <><FiLoader className="animate-spin" /> Installingâ€¦</> : <><FiWifi /> Save &amp; Activate Tunnel</>}
+                      {wgBusy ? <><FiLoader className="animate-spin" /> Installing...</> : <><FiWifi /> Save &amp; Activate Tunnel</>}
                     </button>
                   </div>
                 </div>
               )}
 
-              {/* â”€â”€ STEP 4: Status / Activate â”€â”€ */}
+              {/* ?? STEP 4: Status / Activate ?? */}
               {wgStep === 4 && (
                 <div className="space-y-5">
                   <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-5 space-y-3">
@@ -1361,7 +1362,7 @@ PersistentKeepalive = 25`}</pre>
                       </div>
                       <div>
                         <p className={`font-bold ${wgStatus?.tunnelActive ? "text-emerald-300" : "text-amber-300"}`}>
-                          {wgStatus?.tunnelActive ? "Tunnel Active â€” EcareAfrica" : "Tunnel Inactive"}
+                          {wgStatus?.tunnelActive ? "Tunnel Active  -  EcareAfrica" : "Tunnel Inactive"}
                         </p>
                         {wgStatus?.vpnIp && <p className="text-xs text-slate-400">VPN IP: {wgStatus.vpnIp}</p>}
                         {wgStatus?.lastHandshake && <p className="text-xs text-slate-400">Last handshake: {wgStatus.lastHandshake}</p>}
@@ -1387,10 +1388,10 @@ PersistentKeepalive = 25`}</pre>
 
                   {!wgStatus?.tunnelActive && (
                     <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200 space-y-2">
-                      <p className="font-semibold">Tunnel not active â€” possible causes:</p>
+                      <p className="font-semibold">Tunnel not active  -  possible causes:</p>
                       <ul className="list-disc pl-5 space-y-1 text-xs text-amber-300/80">
                         <li>The server hasn't added this tablet as a peer yet (do Step 2 server commands)</li>
-                        <li>Server firewall not open on UDP port 51820 â€” run: <code className="text-amber-300">ufw allow 51820/udp</code></li>
+                        <li>Server firewall not open on UDP port 51820  -  run: <code className="text-amber-300">ufw allow 51820/udp</code></li>
                         <li>Backend is not running as Administrator (required by WireGuard on Windows)</li>
                       </ul>
                     </div>
@@ -1405,33 +1406,33 @@ PersistentKeepalive = 25`}</pre>
                         </button>
                         <button onClick={() => { setWgStep(5); setWgPingResult(null); setWgDiagnosis(null); void wgDiagnose(); }}
                           className="primary-action flex-1 py-2.5 text-sm">
-                          Test Connection â†’ <FiChevronRight />
+                          Test Connection {">>"} <FiChevronRight />
                         </button>
                       </>
                     ) : (
                       <>
-                        <button onClick={() => setWgStep(3)} className="secondary-action flex-1 py-2.5 text-sm">â† Re-configure</button>
+                        <button onClick={() => setWgStep(3)} className="secondary-action flex-1 py-2.5 text-sm">Re-configure</button>
                         <button onClick={wgInstall} disabled={wgBusy || !wgForm.serverPublicKey}
                           className="primary-action flex-1 py-2.5 text-sm">
-                          {wgBusy ? <><FiLoader className="animate-spin" /> Activatingâ€¦</> : <><FiWifi /> Re-activate Tunnel</>}
+                          {wgBusy ? <><FiLoader className="animate-spin" /> Activating...</> : <><FiWifi /> Re-activate Tunnel</>}
                         </button>
                       </>
                     )}
                   </div>
                   {!wgStatus?.tunnelActive && !wgForm.serverPublicKey && (
                     <p className="text-xs text-amber-300/80 text-center">
-                      ← Go back to <strong>Step 3</strong> and paste the server public key first
+                      Go back to <strong>Step 3</strong> and paste the server public key first
                     </p>
                   )}
                 </div>
               )}
 
-              {/* â”€â”€ STEP 5: Ping Test â”€â”€ */}
+              {/* ?? STEP 5: Ping Test ?? */}
               {wgStep === 5 && (
                 <div className="space-y-5">
                   <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-5 space-y-2">
                     <div className="flex items-center gap-2 text-base font-bold text-white">
-                      <FiActivity className="text-cyan-400" /> Ping Test â€” Verify VPN Connectivity
+                      <FiActivity className="text-cyan-400" /> Ping Test  -  Verify VPN Connectivity
                     </div>
                     <p className="text-sm text-slate-400">
                       Ping the server through the WireGuard tunnel to confirm the connection is working.
@@ -1441,13 +1442,13 @@ PersistentKeepalive = 25`}</pre>
 
                   <div className="space-y-3">
 
-                    {/* ── Diagnose & Fix panel ── */}
+                    {/* Diagnose & Fix panel */}
                     <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-4 space-y-3">
                       <div className="flex items-center justify-between">
                         <p className="text-xs font-semibold text-slate-300 uppercase tracking-wide">Connection Diagnostics</p>
                         <button onClick={wgDiagnose} disabled={wgDiagBusy}
                           className="inline-flex items-center gap-1.5 rounded-lg border border-slate-600 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:border-cyan-500 hover:text-cyan-300 disabled:opacity-50">
-                          {wgDiagBusy ? <><FiLoader className="animate-spin" /> Diagnosing…</> : <><FiRefreshCw /> Run Diagnosis</>}
+                          {wgDiagBusy ? <><FiLoader className="animate-spin" /> Diagnosing...</> : <><FiRefreshCw /> Run Diagnosis</>}
                         </button>
                       </div>
 
@@ -1490,59 +1491,9 @@ PersistentKeepalive = 25`}</pre>
                           )}
 
                           {/* Fix actions */}
-                          {wgDiagnosis.fixes?.map((fix: any, i: number) => {
-                            if (fix.action === 'sync_key') return (
-                              <div key={i} className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 space-y-2">
-                                <p className="text-xs font-semibold text-amber-200">Fix: Key Mismatch</p>
-                                <p className="text-xs text-amber-300/80">
-                                  The running tunnel uses key <span className="font-mono">{fix.activeKey?.slice(0,20)}…</span> but
-                                  the wizard data has a different key. This means the server might have the wrong key registered.
-                                </p>
-                                <p className="text-xs font-semibold text-amber-200">Two steps to fix:</p>
-                                <ol className="list-decimal ml-4 text-xs text-amber-300/80 space-y-1">
-                                  <li>
-                                    <span className="font-semibold">On this tablet:</span> click the button below to sync the key files
-                                  </li>
-                                  <li>
-                                    <span className="font-semibold">On the Super Admin portal (VPN Setup):</span> delete the old peer for your VPN IP,
-                                    then register this key: <span className="font-mono break-all">{fix.activeKey}</span>
-                                  </li>
-                                </ol>
-                                <button onClick={wgSyncKey} disabled={wgDiagBusy}
-                                  className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-4 py-2 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50">
-                                  {wgDiagBusy ? <><FiLoader className="animate-spin" /> Syncing…</> : "Sync Key Files on Tablet"}
-                                </button>
-                                <div className="rounded-lg bg-slate-900/80 p-2 text-xs">
-                                  <p className="text-slate-400 mb-1">Active key to register on server (copy this):</p>
-                                  <div className="flex items-center gap-2">
-                                    <p className="font-mono text-cyan-300 break-all flex-1">{fix.activeKey}</p>
-                                    <button onClick={() => navigator.clipboard.writeText(fix.activeKey).catch(() => {})}
-                                      className="shrink-0 rounded border border-slate-600 px-2 py-1 text-xs hover:border-cyan-500 hover:text-cyan-300">Copy</button>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                            if (fix.action === 'show_register_instructions') return (
-                              <div key={i} className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-3 space-y-2">
-                                <p className="text-xs font-semibold text-blue-200">Fix: Register Key on Server</p>
-                                <p className="text-xs text-blue-300/80">
-                                  Go to <strong>Super Admin portal → Hardware → VPN Setup → Step 2</strong> and register this key for your VPN IP:
-                                </p>
-                                <div className="flex items-center gap-2">
-                                  <p className="font-mono text-cyan-300 text-xs break-all flex-1">{fix.activeKey}</p>
-                                  <button onClick={() => navigator.clipboard.writeText(fix.activeKey ?? '').catch(() => {})}
-                                    className="shrink-0 rounded border border-slate-600 px-2 py-1 text-xs hover:border-cyan-500 hover:text-cyan-300">Copy</button>
-                                </div>
-                              </div>
-                            );
-                            if (fix.action === 'restart_tunnel') return (
-                              <button key={i} onClick={wgInstall} disabled={wgBusy}
-                                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-cyan-700 disabled:opacity-50">
-                                {wgBusy ? <><FiLoader className="animate-spin" /> Restarting…</> : <><FiWifi /> Restart Tunnel</>}
-                              </button>
-                            );
-                            return null;
-                          })}
+                          {wgDiagnosis.fixes?.map((fix: any, i: number) => (
+                            <DiagFix key={i} fix={fix} wgDiagBusy={wgDiagBusy} wgBusy={wgBusy} onSyncKey={wgSyncKey} onRestart={wgInstall} />
+                          ))}
                         </div>
                       )}
                     </div>
@@ -1555,7 +1506,7 @@ PersistentKeepalive = 25`}</pre>
                           placeholder="10.0.0.1" className="form-field font-mono text-sm flex-1" />
                         <button onClick={wgPing} disabled={wgBusy || !wgPingTarget}
                           className="primary-action px-6 py-2.5 text-sm shrink-0">
-                          {wgBusy ? <><FiLoader className="animate-spin" /> Pingingâ€¦</> : <><FiActivity /> Ping</>}
+                          {wgBusy ? <><FiLoader className="animate-spin" /> Pinging...</> : <><FiActivity /> Ping</>}
                         </button>
                       </div>
                       <p className="mt-1 text-xs text-slate-500">Sends 4 ICMP packets via Windows ping command. Tunnel must be active.</p>
@@ -1567,8 +1518,8 @@ PersistentKeepalive = 25`}</pre>
                         <div className={`flex items-center gap-2 font-bold text-sm ${wgPingResult.success ? "text-emerald-300" : "text-red-300"}`}>
                           {wgPingResult.success ? <FiCheckCircle /> : <FiAlertTriangle />}
                           {wgPingResult.success
-                            ? `Ping successful â€” ${wgPingTarget} is reachable via VPN`
-                            : `Ping failed â€” ${wgPingTarget} did not respond`}
+                            ? `Ping successful  -  ${wgPingTarget} is reachable via VPN`
+                            : `Ping failed  -  ${wgPingTarget} did not respond`}
                         </div>
                         <pre className="rounded-lg bg-slate-900/80 p-3 text-xs font-mono text-slate-300 overflow-x-auto whitespace-pre-wrap max-h-48">
                           {wgPingResult.output}
@@ -1611,21 +1562,21 @@ PersistentKeepalive = 25`}</pre>
                   </div>
 
                   <div className="flex gap-3">
-                    <button onClick={() => setWgStep(4)} className="secondary-action py-2.5 text-sm px-5">â† Back</button>
+                    <button onClick={() => setWgStep(4)} className="secondary-action py-2.5 text-sm px-5">Back</button>
                     {wgPingResult?.success && (
                       <div className="flex-1 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-4 space-y-3">
                         <div className="flex items-center gap-2 font-bold text-sm text-emerald-300">
-                          <FiCheckCircle className="text-lg shrink-0" /> Setup Complete â€” VPN tunnel is live
+                          <FiCheckCircle className="text-lg shrink-0" /> Setup Complete  -  VPN tunnel is live
                         </div>
                         <div className="text-xs text-emerald-200/80 space-y-1.5">
-                          <p>âœ“ WireGuard tunnel is active and encrypted</p>
-                          <p>âœ“ School server will detect this tablet <strong>within 30 seconds</strong> and begin pulling attendance logs automatically</p>
-                          <p>âœ“ Every scan on the FK623 device will be sent to the school server in real-time via SSE</p>
-                          <p>âœ“ This setup survives Windows reboots â€” WireGuard runs as a Windows service</p>
+                          <p>v WireGuard tunnel is active and encrypted</p>
+                          <p>v School server will detect this tablet <strong>within 30 seconds</strong> and begin pulling attendance logs automatically</p>
+                          <p>v Every scan on the FK623 device will be sent to the school server in real-time via SSE</p>
+                          <p>v This setup survives Windows reboots  -  WireGuard runs as a Windows service</p>
                         </div>
                         <button onClick={closeDevModal}
                           className="w-full rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-700 transition">
-                          Close â€” Tablet is ready
+                          Close  -  Tablet is ready
                         </button>
                       </div>
                     )}
@@ -1640,9 +1591,8 @@ PersistentKeepalive = 25`}</pre>
   );
 }
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-   LIVE ATTENDANCE FULL-SCREEN FLASH
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+
+/* -- LIVE ATTENDANCE FULL-SCREEN FLASH -- */
 function LiveAttendanceScreen({ log, onDismiss }: { log: AttendanceLog; onDismiss: () => void }) {
   const [visible, setVisible] = useState(false);
   const [progress, setProgress] = useState(100);
@@ -1664,10 +1614,10 @@ function LiveAttendanceScreen({ log, onDismiss }: { log: AttendanceLog; onDismis
   const isAbsent = s.includes("absent");
 
   const methodIcon =
-    method.toLowerCase().includes("face")   ? "ðŸªª" :
-    method.toLowerCase().includes("finger") ? "ðŸ‘†" :
-    method.toLowerCase().includes("card")   ? "ðŸ’³" :
-    method.toLowerCase().includes("pin") || method.toLowerCase().includes("pass") ? "ðŸ”‘" : "âœ…";
+    method.toLowerCase().includes("face")   ? "ID" :
+    method.toLowerCase().includes("finger") ? "" :
+    method.toLowerCase().includes("card")   ? "" :
+    method.toLowerCase().includes("pin") || method.toLowerCase().includes("pass") ? "" : "...";
 
   const accentColor = isLate ? "from-amber-500/20 via-slate-900 to-slate-900 border-amber-500/40" :
                       isAbsent ? "from-red-500/20 via-slate-900 to-slate-900 border-red-500/40" :
@@ -1709,7 +1659,7 @@ function LiveAttendanceScreen({ log, onDismiss }: { log: AttendanceLog; onDismis
                   (e.currentTarget.nextSibling as HTMLElement).style.display = "flex";
                 }}
               />
-              {/* Hidden fallback â€” shown if image fails */}
+              {/* Hidden fallback ? shown if image fails */}
               <div style={{ display: "none" }}
                 className={`absolute inset-0 flex items-center justify-center text-5xl
                   ${isLate ? "bg-amber-500/10" : isAbsent ? "bg-red-500/10" : "bg-emerald-500/10"}`}>
@@ -1729,7 +1679,7 @@ function LiveAttendanceScreen({ log, onDismiss }: { log: AttendanceLog; onDismis
           <p className="text-5xl font-black tracking-tight text-white leading-tight">{log.studentName}</p>
           <p className="mt-3 text-2xl font-bold text-cyan-400">{log.studentId || log.studentDeviceId}</p>
           {log.className && (
-            <p className="mt-1.5 text-base text-slate-400">{log.className}{log.section ? ` Â· Section ${log.section}` : ""}</p>
+            <p className="mt-1.5 text-base text-slate-400">{log.className}{log.section ? ` . Section ${log.section}` : ""}</p>
           )}
         </div>
 
@@ -1761,7 +1711,7 @@ function LiveAttendanceScreen({ log, onDismiss }: { log: AttendanceLog; onDismis
           </div>
           <div className="rounded-xl border border-slate-800 bg-slate-800/60 p-4 text-center">
             <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Device</p>
-            <p className="font-semibold text-slate-200 truncate">{log.deviceId || "â€”"}</p>
+            <p className="font-semibold text-slate-200 truncate">{log.deviceId || " - "}</p>
           </div>
         </div>
 
@@ -1782,4 +1732,103 @@ function LiveAttendanceScreen({ log, onDismiss }: { log: AttendanceLog; onDismis
       </div>
     </div>
   );
+}
+
+/* DiagFix  renders one fix action card from the diagnosis result */
+function DiagFix({
+  fix,
+  wgDiagBusy,
+  wgBusy,
+  onSyncKey,
+  onRestart,
+}: {
+  fix: any;
+  wgDiagBusy: boolean;
+  wgBusy: boolean;
+  onSyncKey: () => void;
+  onRestart: () => void;
+}) {
+  const copy = (text: string) => navigator.clipboard.writeText(text).catch(() => {});
+
+  if (fix.action === "sync_key") {
+    return (
+      <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 space-y-2">
+        <p className="text-xs font-semibold text-amber-200">Fix: Key Mismatch</p>
+        <p className="text-xs text-amber-300/80">
+          The running tunnel uses key{" "}
+          <span className="font-mono">{fix.activeKey?.slice(0, 20)}...</span> but the wizard
+          data has a different key. The server may have the wrong key registered.
+        </p>
+        <ol className="list-decimal ml-4 text-xs text-amber-300/80 space-y-1">
+          <li>Click <strong>Sync Key Files</strong> below  -  saves the correct key to this tablet</li>
+          <li>
+            On the <strong>Super Admin portal, VPN Setup, Fix Key Mismatch</strong>: paste
+            this key and your VPN IP, click Fix
+          </li>
+        </ol>
+        <button
+          onClick={onSyncKey}
+          disabled={wgDiagBusy}
+          className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-4 py-2 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+        >
+          {wgDiagBusy ? (
+            <><FiLoader className="animate-spin" /> Syncing...</>
+          ) : (
+            "Sync Key Files on Tablet"
+          )}
+        </button>
+        <div className="rounded-lg bg-slate-900/80 p-2 text-xs">
+          <p className="text-slate-400 mb-1">Active key  -  paste this in the server Fix panel:</p>
+          <div className="flex items-center gap-2">
+            <p className="font-mono text-cyan-300 break-all flex-1">{fix.activeKey}</p>
+            <button
+              onClick={() => copy(fix.activeKey ?? "")}
+              className="shrink-0 rounded border border-slate-600 px-2 py-1 text-xs hover:border-cyan-500 hover:text-cyan-300"
+            >
+              Copy
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (fix.action === "show_register_instructions") {
+    return (
+      <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-3 space-y-2">
+        <p className="text-xs font-semibold text-blue-200">Fix: Register Key on Server</p>
+        <p className="text-xs text-blue-300/80">
+          Go to <strong>Super Admin, Hardware, VPN Setup, Step 2</strong> and register
+          this key with your VPN IP:
+        </p>
+        <div className="flex items-center gap-2">
+          <p className="font-mono text-cyan-300 text-xs break-all flex-1">{fix.activeKey}</p>
+          <button
+            onClick={() => copy(fix.activeKey ?? "")}
+            className="shrink-0 rounded border border-slate-600 px-2 py-1 text-xs hover:border-cyan-500 hover:text-cyan-300"
+          >
+            Copy
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (fix.action === "restart_tunnel") {
+    return (
+      <button
+        onClick={onRestart}
+        disabled={wgBusy}
+        className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-cyan-700 disabled:opacity-50"
+      >
+        {wgBusy ? (
+          <><FiLoader className="animate-spin" /> Restarting...</>
+        ) : (
+          <><FiWifi /> Restart Tunnel</>
+        )}
+      </button>
+    );
+  }
+
+  return null;
 }
