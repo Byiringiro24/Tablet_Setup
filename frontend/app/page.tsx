@@ -377,6 +377,8 @@ export default function SmartAttendanceDashboard() {
   const [wgPingTarget, setWgPingTarget] = useState("10.0.0.1"); // server VPN IP â€” updated from health on wizard open
   const [wgPingResult, setWgPingResult] = useState<{success:boolean;output:string}|null>(null);
   const [wgInstalled,  setWgInstalled]  = useState(false);
+  const [svcStatus,    setSvcStatus]    = useState<{ bridgeService: string; frontendService: string; bothRunning: boolean } | null>(null);
+  const [svcInstalling, setSvcInstalling] = useState(false);
   const [copiedKey,    setCopiedKey]    = useState(false);
 
   const openDevModal = () => {
@@ -492,6 +494,8 @@ export default function SmartAttendanceDashboard() {
     }
     setWgBusy(false);
     setDevStep("wireguard");
+    // Check service status in background
+    void checkServices();
   }
 
   async function wgRefreshStatus() {
@@ -557,6 +561,34 @@ export default function SmartAttendanceDashboard() {
       setWgError(e?.response?.data?.error || e.message || "Failed to deactivate");
     }
     setWgBusy(false);
+  }
+
+  async function checkServices() {
+    try {
+      const r = await wireguardApi.getServicesStatus();
+      setSvcStatus(r.data as any);
+    } catch { setSvcStatus(null); }
+  }
+
+  async function installServices() {
+    setSvcInstalling(true);
+    try {
+      toast.loading("Installing services — this may take up to 2 minutes...", { id: "svc" });
+      const r = await wireguardApi.installServices();
+      const data = r.data as any;
+      toast.dismiss("svc");
+      if (data.success) {
+        toast.success("Services installed — bridge and frontend now start automatically on boot");
+        await checkServices();
+      } else {
+        toast.error("Install had issues — check output below");
+      }
+      setSvcStatus(prev => prev ?? { bridgeService: "Unknown", frontendService: "Unknown", bothRunning: false });
+    } catch (e: any) {
+      toast.dismiss("svc");
+      toast.error(e?.response?.data?.error || e.message || "Service install failed");
+    }
+    setSvcInstalling(false);
   }
 
   async function wgPing() {
@@ -1078,6 +1110,64 @@ export default function SmartAttendanceDashboard() {
                         WireGuard is installed â†’ Next <FiChevronRight />
                       </button>
                     )}
+
+                  {/* Services panel — install bridge + frontend as auto-start Windows services */}
+                  <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-5 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-base font-bold text-white">
+                        <FiSettings className="text-amber-400" /> Auto-Start Services
+                      </div>
+                      <button onClick={checkServices} className="text-xs text-slate-500 hover:text-slate-300 flex items-center gap-1">
+                        <FiRefreshCw className="text-xs" /> Refresh
+                      </button>
+                    </div>
+                    <p className="text-sm text-slate-400">
+                      Install the bridge and frontend as Windows services so they start automatically
+                      on every boot — no manual "Run as Administrator" ever needed again.
+                    </p>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      {[
+                        { label: "Bridge (port 5000)", key: "bridgeService" },
+                        { label: "Frontend (port 3000)", key: "frontendService" },
+                      ].map(({ label, key }) => {
+                        const state = svcStatus ? (svcStatus as any)[key] as string : null;
+                        const isRunning = state === "Running";
+                        const isInstalled = state && state !== "NotInstalled" && state !== "Unknown";
+                        return (
+                          <div key={key} className={`rounded-lg border px-3 py-2 flex items-center gap-2
+                            ${isRunning ? "border-emerald-500/30 bg-emerald-500/10" :
+                              isInstalled ? "border-amber-500/30 bg-amber-500/10" :
+                              "border-slate-700 bg-slate-800/40"}`}>
+                            {isRunning ? <FiCheckCircle className="text-emerald-400 shrink-0" /> :
+                             isInstalled ? <FiAlertTriangle className="text-amber-400 shrink-0" /> :
+                             <FiSettings className="text-slate-500 shrink-0" />}
+                            <div>
+                              <p className="font-semibold text-slate-200">{label}</p>
+                              <p className={isRunning ? "text-emerald-400" : isInstalled ? "text-amber-300" : "text-slate-500"}>
+                                {state ?? "Not checked"}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {svcStatus?.bothRunning ? (
+                      <div className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
+                        <FiCheckCircle /> Both services running — auto-start active. Tablet works after every reboot.
+                      </div>
+                    ) : (
+                      <button onClick={installServices} disabled={svcInstalling}
+                        className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 py-3 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50 transition">
+                        {svcInstalling
+                          ? <><FiLoader className="animate-spin" /> Installing (up to 2 min)…</>
+                          : <><FiSettings /> Install as Auto-Start Windows Services</>}
+                      </button>
+                    )}
+                    <p className="text-xs text-slate-600 text-center">
+                      Requires Administrator. If it fails, double-click{" "}
+                      <code className="font-mono">INSTALL (double-click me).bat</code> in the Tablet Setup folder.
+                    </p>
+                  </div>
                   </div>
                 </div>
               )}

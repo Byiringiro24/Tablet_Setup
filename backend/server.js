@@ -1163,6 +1163,60 @@ app.post('/api/wireguard/install', async (req, res) => {
   }
 });
 
+// POST /api/services/install
+// Installs the bridge and frontend as Windows services using NSSM so they
+// start automatically on boot as SYSTEM — no manual "Run as Administrator" needed.
+app.post('/api/services/install', async (req, res) => {
+  const scriptPath = path.join(__dirname, '..', 'install-services.ps1');
+  if (!fsSync.existsSync(scriptPath)) {
+    return res.status(404).json({
+      success: false,
+      error: 'install-services.ps1 not found. Make sure the script is in the Tablet Setup folder.',
+    });
+  }
+  try {
+    // Run the install script elevated — the bridge must already be running as admin
+    // for this to work (powershell Start-Process -Verb RunAs needs an elevated caller)
+    const output = await runPS(
+      `& '${scriptPath.replace(/'/g, "''")}' *>&1`,
+      120000  // 2 minute timeout — includes possible npm build
+    );
+    const success = output.includes('SETUP COMPLETE') || output.includes('is RUNNING');
+    res.json({ success, output, message: success ? 'Services installed and started' : 'Install may have issues — see output' });
+  } catch (err) {
+    res.json({
+      success: false,
+      output: err.message,
+      error: 'Install script failed. Make sure the bridge is running as Administrator.',
+    });
+  }
+});
+
+// GET /api/services/status
+// Returns status of both Windows services
+app.get('/api/services/status', async (req, res) => {
+  try {
+    const output = await runPS(
+      `@("EcaAfrica-Bridge","EcaAfrica-Frontend") | ForEach-Object { $s = Get-Service $_ -EA SilentlyContinue; "$_=$(if($s){$s.Status}else{'NotInstalled'})" }`,
+      10000
+    );
+    const lines = output.split('\n').map(l => l.trim()).filter(Boolean);
+    const status: Record<string, string> = {};
+    for (const line of lines) {
+      const [name, state] = line.split('=');
+      if (name && state) status[name.trim()] = state.trim();
+    }
+    res.json({
+      success: true,
+      bridgeService: status['EcaAfrica-Bridge'] || 'NotInstalled',
+      frontendService: status['EcaAfrica-Frontend'] || 'NotInstalled',
+      bothRunning: status['EcaAfrica-Bridge'] === 'Running' && status['EcaAfrica-Frontend'] === 'Running',
+    });
+  } catch (err) {
+    res.json({ success: false, error: err.message, bridgeService: 'Unknown', frontendService: 'Unknown', bothRunning: false });
+  }
+});
+
 // POST /api/wireguard/deactivate
 // Removes the tunnel service (stops VPN).
 app.post('/api/wireguard/deactivate', async (req, res) => {

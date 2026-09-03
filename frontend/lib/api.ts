@@ -61,6 +61,10 @@ export const wireguardApi = {
   }) => api.post('/wireguard/install', data),
   /** Stop and remove the tunnel service */
   deactivate: () => api.post('/wireguard/deactivate'),
+  /** Install bridge + frontend as Windows auto-start services (run as SYSTEM) */
+  installServices: () => api.post('/services/install'),
+  /** Check if services are installed and running */
+  getServicesStatus: () => api.get('/services/status'),
   /** Ping a VPN IP from the tablet using Windows ping.exe */
   ping: (target: string) => api.post('/wireguard/ping', { target }),
 };
