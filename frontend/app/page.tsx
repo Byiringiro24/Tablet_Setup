@@ -376,6 +376,8 @@ export default function SmartAttendanceDashboard() {
   const [wgForm,       setWgForm]       = useState({ serverPublicKey: "", serverEndpoint: WG_SERVER_ENDPOINT_DEFAULT, vpnIp: "10.0.0.2", dns: "1.1.1.1" });
   const [wgPingTarget, setWgPingTarget] = useState("10.0.0.1"); // server VPN IP â€” updated from health on wizard open
   const [wgPingResult, setWgPingResult] = useState<{success:boolean;output:string}|null>(null);
+  const [wgDiagnosis,  setWgDiagnosis]  = useState<any | null>(null);
+  const [wgDiagBusy,   setWgDiagBusy]  = useState(false);
   const [wgInstalled,  setWgInstalled]  = useState(false);
   const [svcStatus,    setSvcStatus]    = useState<{ bridgeService: string; frontendService: string; bothRunning: boolean } | null>(null);
   const [svcInstalling, setSvcInstalling] = useState(false);
@@ -563,7 +565,30 @@ export default function SmartAttendanceDashboard() {
     setWgBusy(false);
   }
 
-  async function checkServices() {
+  async function wgDiagnose() {
+    setWgDiagBusy(true); setWgDiagnosis(null);
+    try {
+      const r = await wireguardApi.diagnose();
+      setWgDiagnosis(r.data as any);
+    } catch (e: any) {
+      setWgDiagnosis({ healthy: false, problems: [e?.message || "Diagnosis failed"], fixes: [] });
+    }
+    setWgDiagBusy(false);
+  }
+
+  async function wgSyncKey() {
+    setWgDiagBusy(true);
+    try {
+      const r = await wireguardApi.syncKey();
+      const data = r.data as any;
+      toast.success("Keys synced — " + (data.activeKey?.slice(0, 16) + "…"));
+      await wgRefreshStatus();
+      await wgDiagnose();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.error || e.message || "Sync failed");
+    }
+    setWgDiagBusy(false);
+  }
     try {
       const r = await wireguardApi.getServicesStatus();
       setSvcStatus(r.data as any);
@@ -1378,7 +1403,7 @@ PersistentKeepalive = 25`}</pre>
                           className="secondary-action flex-1 py-2.5 text-sm border-red-500/30 text-red-400 hover:border-red-400">
                           {wgBusy ? <FiLoader className="animate-spin" /> : <FiWifiOff />} Stop Tunnel
                         </button>
-                        <button onClick={() => { setWgStep(5); setWgPingResult(null); }}
+                        <button onClick={() => { setWgStep(5); setWgPingResult(null); setWgDiagnosis(null); void wgDiagnose(); }}
                           className="primary-action flex-1 py-2.5 text-sm">
                           Test Connection â†’ <FiChevronRight />
                         </button>
@@ -1415,6 +1440,113 @@ PersistentKeepalive = 25`}</pre>
                   </div>
 
                   <div className="space-y-3">
+
+                    {/* ── Diagnose & Fix panel ── */}
+                    <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold text-slate-300 uppercase tracking-wide">Connection Diagnostics</p>
+                        <button onClick={wgDiagnose} disabled={wgDiagBusy}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-600 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:border-cyan-500 hover:text-cyan-300 disabled:opacity-50">
+                          {wgDiagBusy ? <><FiLoader className="animate-spin" /> Diagnosing…</> : <><FiRefreshCw /> Run Diagnosis</>}
+                        </button>
+                      </div>
+
+                      {!wgDiagnosis && !wgDiagBusy && (
+                        <p className="text-xs text-slate-500">Click "Run Diagnosis" to detect any connection problems automatically.</p>
+                      )}
+
+                      {wgDiagnosis && (
+                        <div className="space-y-2">
+                          {/* Overall health */}
+                          <div className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold
+                            ${wgDiagnosis.healthy ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30" : "bg-red-500/15 text-red-300 border border-red-500/30"}`}>
+                            {wgDiagnosis.healthy ? <FiCheckCircle /> : <FiAlertTriangle />}
+                            {wgDiagnosis.healthy ? "Connection looks healthy" : `${wgDiagnosis.problems?.length ?? 1} problem(s) detected`}
+                          </div>
+
+                          {/* Active key info */}
+                          {wgDiagnosis.activeKey && (
+                            <div className="rounded-lg bg-slate-900/60 px-3 py-2 text-xs space-y-1">
+                              <p className="text-slate-400">Active tunnel key:</p>
+                              <p className="font-mono text-cyan-300 break-all">{wgDiagnosis.activeKey}</p>
+                              {wgDiagnosis.keyMismatch && (
+                                <p className="text-amber-300 font-semibold">⚠ This key differs from the one saved in wizard data</p>
+                              )}
+                              {wgDiagnosis.vpnIp && <p className="text-slate-400">VPN IP from config: <span className="font-mono text-slate-200">{wgDiagnosis.vpnIp}</span></p>}
+                              {wgDiagnosis.handshake && <p className="text-slate-400">Last handshake: <span className="text-slate-200">{wgDiagnosis.handshake}</span></p>}
+                            </div>
+                          )}
+
+                          {/* Problems list */}
+                          {wgDiagnosis.problems?.length > 0 && (
+                            <ul className="space-y-1">
+                              {wgDiagnosis.problems.map((p: string, i: number) => (
+                                <li key={i} className="flex items-start gap-2 text-xs text-red-300">
+                                  <FiAlertTriangle className="mt-0.5 shrink-0 text-red-400" />
+                                  {p}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+
+                          {/* Fix actions */}
+                          {wgDiagnosis.fixes?.map((fix: any, i: number) => {
+                            if (fix.action === 'sync_key') return (
+                              <div key={i} className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 space-y-2">
+                                <p className="text-xs font-semibold text-amber-200">Fix: Key Mismatch</p>
+                                <p className="text-xs text-amber-300/80">
+                                  The running tunnel uses key <span className="font-mono">{fix.activeKey?.slice(0,20)}…</span> but
+                                  the wizard data has a different key. This means the server might have the wrong key registered.
+                                </p>
+                                <p className="text-xs font-semibold text-amber-200">Two steps to fix:</p>
+                                <ol className="list-decimal ml-4 text-xs text-amber-300/80 space-y-1">
+                                  <li>
+                                    <span className="font-semibold">On this tablet:</span> click the button below to sync the key files
+                                  </li>
+                                  <li>
+                                    <span className="font-semibold">On the Super Admin portal (VPN Setup):</span> delete the old peer for your VPN IP,
+                                    then register this key: <span className="font-mono break-all">{fix.activeKey}</span>
+                                  </li>
+                                </ol>
+                                <button onClick={wgSyncKey} disabled={wgDiagBusy}
+                                  className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-4 py-2 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50">
+                                  {wgDiagBusy ? <><FiLoader className="animate-spin" /> Syncing…</> : "Sync Key Files on Tablet"}
+                                </button>
+                                <div className="rounded-lg bg-slate-900/80 p-2 text-xs">
+                                  <p className="text-slate-400 mb-1">Active key to register on server (copy this):</p>
+                                  <div className="flex items-center gap-2">
+                                    <p className="font-mono text-cyan-300 break-all flex-1">{fix.activeKey}</p>
+                                    <button onClick={() => navigator.clipboard.writeText(fix.activeKey).catch(() => {})}
+                                      className="shrink-0 rounded border border-slate-600 px-2 py-1 text-xs hover:border-cyan-500 hover:text-cyan-300">Copy</button>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                            if (fix.action === 'show_register_instructions') return (
+                              <div key={i} className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-3 space-y-2">
+                                <p className="text-xs font-semibold text-blue-200">Fix: Register Key on Server</p>
+                                <p className="text-xs text-blue-300/80">
+                                  Go to <strong>Super Admin portal → Hardware → VPN Setup → Step 2</strong> and register this key for your VPN IP:
+                                </p>
+                                <div className="flex items-center gap-2">
+                                  <p className="font-mono text-cyan-300 text-xs break-all flex-1">{fix.activeKey}</p>
+                                  <button onClick={() => navigator.clipboard.writeText(fix.activeKey ?? '').catch(() => {})}
+                                    className="shrink-0 rounded border border-slate-600 px-2 py-1 text-xs hover:border-cyan-500 hover:text-cyan-300">Copy</button>
+                                </div>
+                              </div>
+                            );
+                            if (fix.action === 'restart_tunnel') return (
+                              <button key={i} onClick={wgInstall} disabled={wgBusy}
+                                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-cyan-700 disabled:opacity-50">
+                                {wgBusy ? <><FiLoader className="animate-spin" /> Restarting…</> : <><FiWifi /> Restart Tunnel</>}
+                              </button>
+                            );
+                            return null;
+                          })}
+                        </div>
+                      )}
+                    </div>
+
                     <div>
                       <label className="mb-1.5 block text-sm font-medium text-slate-300">Target IP to ping</label>
                       <div className="flex gap-2">

@@ -1218,6 +1218,122 @@ app.get('/api/services/status', async (req, res) => {
   }
 });
 
+// POST /api/wireguard/diagnose
+// Diagnoses the VPN connection — detects key mismatch between the running tunnel
+// and the saved key in data/, and checks if the tunnel is actually connected.
+// Returns everything the frontend needs to show a clear fix path.
+app.post('/api/wireguard/diagnose', async (req, res) => {
+  const problems = [];
+  const fixes    = [];
+
+  // 1. Is WireGuard installed?
+  if (!fsSync.existsSync(WG_EXE)) {
+    return res.json({ success: true, healthy: false, problems: ['WireGuard is not installed'], fixes: [] });
+  }
+
+  // 2. Is the tunnel running?
+  let tunnelOutput = '';
+  try {
+    tunnelOutput = await runWg('show', WIREGUARD_TUNNEL_NAME);
+  } catch {
+    problems.push('Tunnel is not running');
+    fixes.push({ action: 'restart_tunnel', label: 'Restart Tunnel' });
+    return res.json({ success: true, healthy: false, problems, fixes, tunnelOutput: '' });
+  }
+
+  // 3. Parse active tunnel info
+  const activeKeyMatch = tunnelOutput.match(/public key:\s*(.+)/i);
+  const activeKey      = activeKeyMatch ? activeKeyMatch[1].trim() : null;
+  const handshakeMatch = tunnelOutput.match(/latest handshake:\s*(.+)/i);
+  const hasHandshake   = handshakeMatch && !handshakeMatch[1].includes('0 seconds');
+  const endpointMatch  = tunnelOutput.match(/endpoint:\s*(.+)/i);
+  const endpoint       = endpointMatch ? endpointMatch[1].trim() : null;
+  const transferMatch  = tunnelOutput.match(/transfer:\s*(.+)/i);
+
+  // 4. Check saved key matches active key
+  const keyFile    = path.join(__dirname, 'data', 'wireguard-public.key');
+  const savedKey   = fsSync.existsSync(keyFile) ? fsSync.readFileSync(keyFile, 'utf8').trim() : null;
+  const keyMismatch = savedKey && activeKey && savedKey !== activeKey;
+
+  if (keyMismatch) {
+    problems.push(`Key mismatch: saved key (${savedKey.slice(0,16)}…) does not match active tunnel key (${activeKey.slice(0,16)}…)`);
+    fixes.push({
+      action: 'sync_key',
+      label: 'Sync key — update saved key to match running tunnel',
+      activeKey,
+    });
+  }
+
+  // 5. No handshake — server doesn't know this tablet yet
+  if (!hasHandshake) {
+    problems.push('No handshake with server — server may not have this key registered');
+    fixes.push({
+      action: 'show_register_instructions',
+      label: 'Register this key on the server',
+      activeKey,
+    });
+  }
+
+  // 6. Read VPN IP from config
+  let vpnIp = null;
+  try {
+    const confPath = path.join(WG_TUNNEL_DIR, `${WIREGUARD_TUNNEL_NAME}.conf`);
+    if (fsSync.existsSync(confPath)) {
+      const conf = fsSync.readFileSync(confPath, 'utf8');
+      const m = conf.match(/^Address\s*=\s*([\d.]+)/im);
+      if (m) vpnIp = m[1];
+    }
+  } catch { /* ignore */ }
+
+  const healthy = problems.length === 0 && hasHandshake;
+
+  res.json({
+    success: true,
+    healthy,
+    activeKey,
+    savedKey,
+    keyMismatch: !!keyMismatch,
+    hasHandshake,
+    handshake: handshakeMatch?.[1]?.trim() ?? null,
+    endpoint,
+    transfer: transferMatch?.[1]?.trim() ?? null,
+    vpnIp,
+    problems,
+    fixes,
+    tunnelOutput,
+  });
+});
+
+// POST /api/wireguard/sync-key
+// Saves the active tunnel's public key to data/wireguard-public.key
+// so the wizard shows the correct key — fixes the mismatch problem.
+app.post('/api/wireguard/sync-key', async (req, res) => {
+  try {
+    const tunnelOutput = await runWg('show', WIREGUARD_TUNNEL_NAME);
+    const activeKeyMatch = tunnelOutput.match(/public key:\s*(.+)/i);
+    if (!activeKeyMatch) {
+      return res.status(400).json({ success: false, error: 'Tunnel is not running — cannot read active key' });
+    }
+    const activeKey = activeKeyMatch[1].trim();
+    const keyDir = path.join(__dirname, 'data');
+    if (!fsSync.existsSync(keyDir)) fsSync.mkdirSync(keyDir, { recursive: true });
+    fsSync.writeFileSync(path.join(keyDir, 'wireguard-public.key'), activeKey);
+    // We cannot recover the private key from wg show — it's hidden.
+    // The private key is in the conf file though:
+    const confPath = path.join(WG_TUNNEL_DIR, `${WIREGUARD_TUNNEL_NAME}.conf`);
+    if (fsSync.existsSync(confPath)) {
+      const conf = fsSync.readFileSync(confPath, 'utf8');
+      const privMatch = conf.match(/^PrivateKey\s*=\s*(.+)/im);
+      if (privMatch) {
+        fsSync.writeFileSync(path.join(keyDir, 'wireguard-private.key'), privMatch[1].trim(), { mode: 0o600 });
+      }
+    }
+    res.json({ success: true, activeKey, message: 'Key files synced to match running tunnel' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // POST /api/wireguard/deactivate
 // Removes the tunnel service (stops VPN).
 app.post('/api/wireguard/deactivate', async (req, res) => {

@@ -65,6 +65,10 @@ export const wireguardApi = {
   installServices: () => api.post('/services/install'),
   /** Check if services are installed and running */
   getServicesStatus: () => api.get('/services/status'),
+  /** Diagnose VPN connection — detects key mismatch, handshake issues */
+  diagnose: () => api.post('/wireguard/diagnose'),
+  /** Sync saved key files to match the running tunnel (fixes key mismatch) */
+  syncKey: () => api.post('/wireguard/sync-key'),
   /** Ping a VPN IP from the tablet using Windows ping.exe */
   ping: (target: string) => api.post('/wireguard/ping', { target }),
 };
