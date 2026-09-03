@@ -61,6 +61,8 @@ export const wireguardApi = {
   }) => api.post('/wireguard/install', data),
   /** Stop and remove the tunnel service */
   deactivate: () => api.post('/wireguard/deactivate'),
+  /** Ping a VPN IP from the tablet using Windows ping.exe */
+  ping: (target: string) => api.post('/wireguard/ping', { target }),
 };
 
 export default api;

@@ -928,6 +928,18 @@ function runWg(...args) {
 // GET /api/wireguard/status
 // Returns: installed, tunnelActive, tunnelName, vpnIp, publicKey (if keys exist)
 app.get('/api/wireguard/status', async (req, res) => {
+  // Check if running as Administrator — WireGuard tunnel service requires it
+  let isAdmin = false;
+  try {
+    await runPS('([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]"Administrator")', 5000);
+    isAdmin = true;
+  } catch {
+    // If the PS command fails, try a simpler test
+    try {
+      await runPS('net session', 3000);
+      isAdmin = true;
+    } catch { isAdmin = false; }
+  }
   const wgExeExists  = fsSync.existsSync(WG_EXE);
   const wguiExists   = fsSync.existsSync('C:\\Program Files\\WireGuard\\wireguard.exe');
   const installed    = wgExeExists && wguiExists;
@@ -982,6 +994,7 @@ app.get('/api/wireguard/status', async (req, res) => {
   res.json({
     success: true,
     installed,
+    isAdmin,           // frontend uses this to warn user if bridge is not elevated
     wgExeExists,
     tunnelExists,
     tunnelActive,
@@ -1157,7 +1170,12 @@ app.post('/api/wireguard/deactivate', async (req, res) => {
     await runPS(`& 'C:\\Program Files\\WireGuard\\wireguard.exe' /uninstalltunnelservice ${WIREGUARD_TUNNEL_NAME}`);
     res.json({ success: true, message: 'WireGuard tunnel stopped' });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    const msg = err.message || '';
+    // Treat "not found" / "does not exist" as already-stopped — not a real error
+    if (/not found|does not exist|0x80070002|cannot find/i.test(msg)) {
+      return res.json({ success: true, message: 'Tunnel was already stopped' });
+    }
+    res.status(500).json({ success: false, error: msg });
   }
 });
 
