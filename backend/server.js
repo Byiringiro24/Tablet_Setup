@@ -1201,7 +1201,7 @@ app.get('/api/services/status', async (req, res) => {
       10000
     );
     const lines = output.split('\n').map(l => l.trim()).filter(Boolean);
-    const status: Record<string, string> = {};
+    const status = {};
     for (const line of lines) {
       const [name, state] = line.split('=');
       if (name && state) status[name.trim()] = state.trim();
