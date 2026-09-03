@@ -960,8 +960,9 @@ app.get('/api/wireguard/status', async (req, res) => {
         const show = await runWg('show', WIREGUARD_TUNNEL_NAME).catch(() => '');
         if (show.includes('interface:') || show.includes('listening port')) {
           tunnelActive = true;
-          const ipMatch = show.match(/allowed ips:\s*([\d.]+)/i);
-          if (ipMatch) vpnIp = ipMatch[1];
+          // Read VPN IP from the interface address, not the peer's allowed-ips
+          // `wg show EcareAfrica` output has: "interface: EcareAfrica" then details
+          // The address is not in wg show output — read it from the config file instead
           const hsMatch = show.match(/latest handshake:\s*(.+)/i);
           if (hsMatch) lastHandshake = hsMatch[1].trim();
         }
@@ -979,17 +980,17 @@ app.get('/api/wireguard/status', async (req, res) => {
     } catch { /* no saved key */ }
   }
 
-  // Also read VPN IP from saved config if tunnel active VPN IP not detected via wg show
-  if (!vpnIp && tunnelActive) {
-    try {
-      const confPath = path.join(WG_TUNNEL_DIR, `${WIREGUARD_TUNNEL_NAME}.conf`);
-      if (fsSync.existsSync(confPath)) {
-        const conf = fsSync.readFileSync(confPath, 'utf8');
-        const m = conf.match(/^Address\s*=\s*([\d.]+)/im);
-        if (m) vpnIp = m[1];
-      }
-    } catch { /* ignore */ }
-  }
+  // Read VPN IP from the saved config file — this is the source of truth
+  // wg show does not expose the interface Address, only the peer AllowedIPs
+  try {
+    const confPath = path.join(WG_TUNNEL_DIR, `${WIREGUARD_TUNNEL_NAME}.conf`);
+    if (fsSync.existsSync(confPath)) {
+      const conf = fsSync.readFileSync(confPath, 'utf8');
+      // Match Address = 10.0.0.3/32 — capture just the IP, not the /32
+      const m = conf.match(/^Address\s*=\s*([\d.]+)(?:\/\d+)?/im);
+      if (m) vpnIp = m[1];
+    }
+  } catch { /* ignore */ }
 
   res.json({
     success: true,
