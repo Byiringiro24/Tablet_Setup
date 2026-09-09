@@ -533,7 +533,7 @@ function attendanceFromLog(log) {
     timestamp: log.timestamp,
     status: resolved.status,
     attendancePeriod: resolved.period,
-    photoUrl: student?.photoUrl || '',   // â† included for display on LiveAttendanceScreen
+    photoUrl: (() => { const u = student?.photoUrl || ''; if (!u) return ''; if (u.startsWith('http://localhost') || u.startsWith('data:')) return u; return http://localhost:/api/school/photo?url=; })(),
     verified: true,
     rawData: log,
   };

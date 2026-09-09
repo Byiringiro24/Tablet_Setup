@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
@@ -26,10 +26,9 @@ import GateKeeperPanel       from "@/components/GateKeeperPanel";
 import ManualAttendancePanel  from "@/components/ManualAttendancePanel";
 import UsersPanel             from "@/components/UsersPanel";
 import LiveAttendanceScreen   from "@/components/LiveAttendanceScreen";
-import { DiagFix }            from "@/components/DiagFix";
 import WireguardWizard        from "@/components/WireguardWizard";
 
-/* ─── Constants ─────────────────────────────────────────── */
+/* Constants */
 
 const DEV_PASSWORD = "admin1234";
 const WG_SERVER_ENDPOINT_DEFAULT = "169.58.124.150:51820";
@@ -44,7 +43,7 @@ const CLASS_LIST = [
   "S6 MPC","S6 MEG","S6 PCB",
 ];
 
-/* ─── WireGuard wizard state types ─────────────────────── */
+  /* WireGuard wizard helpers */
 
 type WgStatus = {
   installed: boolean;
@@ -55,13 +54,13 @@ type WgStatus = {
   lastHandshake: string | null;
 };
 
-/* ═══════════════════════════════════════════════════════════
+/* 
    MAIN COMPONENT
-═══════════════════════════════════════════════════════════ */
+ */
 
 export default function SmartAttendanceDashboard() {
 
-  /* ── Core state ─────────────────────────────────────── */
+  /* Core state */
   const [stats,      setStats]      = useState<Stats>(emptyStats);
   const [device,     setDevice]     = useState<DeviceStatus | null>(null);
   const [logs,       setLogs]       = useState<AttendanceLog[]>([]);
@@ -73,7 +72,7 @@ export default function SmartAttendanceDashboard() {
   const [activeView, setActiveView] = useState<NavView>("dashboard");
   const [connected,  setConnected]  = useState(false);
 
-  /* ── Live flash ─────────────────────────────────────── */
+  /* Live flash */
   const [liveLog,    setLiveLog]    = useState<AttendanceLog | null>(null);
   const flashQueueRef = useRef<AttendanceLog[]>([]);
   const liveTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -86,7 +85,7 @@ export default function SmartAttendanceDashboard() {
     liveTimerRef.current = setTimeout(() => showNextFromQueue.current(), 4000);
   });
 
-  /* ── School auth state ──────────────────────────────── */
+  /* School auth helpers */
   const [schoolUser,      setSchoolUser]      = useState<any>(null);
   const [schoolLoggedIn,  setSchoolLoggedIn]  = useState(false);
   const [showSchoolLogin, setShowSchoolLogin] = useState(false);
@@ -96,7 +95,7 @@ export default function SmartAttendanceDashboard() {
   const [loginError,      setLoginError]      = useState("");
   const [loginBusy,       setLoginBusy]       = useState(false);
 
-  /* ── Device config ──────────────────────────────────── */
+  /*  Device config  */
   const [deviceForm, setDeviceForm] = useState({
     deviceId:  "DV-KGL-01",
     ipAddress: "10.23.194.16",
@@ -107,7 +106,7 @@ export default function SmartAttendanceDashboard() {
   const deviceFormRef = useRef(deviceForm);
   useEffect(() => { deviceFormRef.current = deviceForm; }, [deviceForm]);
 
-  /* ── SSE + auto-connect ─────────────────────────────── */
+  /* SSE + auto-connect */
   const sseRef           = useRef<EventSource | null>(null);
   const sseReconnectRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoConnectRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -115,14 +114,14 @@ export default function SmartAttendanceDashboard() {
   const [connectStatus,  setConnectStatus]  = useState<"connecting"|"connected"|"retrying">("connecting");
   const [connectAttempt, setConnectAttempt] = useState(0);
 
-  /* ── Student form ───────────────────────────────────── */
+  /*  Student form  */
   const [studentForm, setStudentForm] = useState({
     name: "", studentId: "", studentDeviceId: "",
     className: CLASS_LIST[0], section: "",
     assignedDeviceId: "", parentPhone: "",
   });
 
-  /* ── Dev modal ──────────────────────────────────────── */
+  /* Dev modal helpers */
   const [devStep,         setDevStep]         = useState<"closed"|"password"|"settings"|"wireguard">("closed");
   const [devPendingAction,setDevPendingAction] = useState<"settings"|"wireguard">("settings");
   const [devPassword,     setDevPassword]     = useState("");
@@ -130,7 +129,7 @@ export default function SmartAttendanceDashboard() {
   const [showDevPassword, setShowDevPassword] = useState(false);
   const [devForm,         setDevForm]         = useState({ ...deviceForm });
 
-  /* ── WireGuard wizard ───────────────────────────────── */
+  /* WireGuard wizard helpers */
   const [wgStatus,     setWgStatus]     = useState<WgStatus | null>(null);
   const [wgStep,       setWgStep]       = useState<1|2|3|4|5>(1);
   const [wgBusy,       setWgBusy]       = useState(false);
@@ -150,7 +149,7 @@ export default function SmartAttendanceDashboard() {
   const [svcInstalling,setSvcInstalling] = useState(false);
   const [copiedKey,    setCopiedKey]     = useState(false);
 
-  /* ── Sidebar visibility ─────────────────────────────── */
+  /* Sidebar visibility */
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [sidebarLocked,  setSidebarLocked]  = useState(false);
   const sidebarTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -179,7 +178,7 @@ export default function SmartAttendanceDashboard() {
   };
   const handleSidebarLeave = () => { setSidebarLocked(false); resetSidebarTimer(); };
 
-  /* ── SSE helpers ────────────────────────────────────── */
+  /* SSE + auto-connect */
   const onFreshRef = useRef<(logs: AttendanceLog[]) => void>(() => {});
   onFreshRef.current = (fresh: AttendanceLog[]) => {
     const deduped = fresh.filter(l => !knownLogIds.current.has(l.id));
@@ -274,19 +273,22 @@ export default function SmartAttendanceDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connectStatus]);
 
-  /* ── Device connect / dashboard ─────────────────────── */
+  /* Device connect / dashboard */
   async function attemptConnect(attempt: number) {
     if (!mountedRef.current) return;
     setConnectAttempt(attempt);
     setConnectStatus("connecting");
     try {
-      const res = await deviceApi.connect({
-        deviceId:  deviceFormRef.current.deviceId,
-        ipAddress: deviceFormRef.current.ipAddress,
-        port:      deviceFormRef.current.port,
-        license:   deviceFormRef.current.license,
-        timeoutMs: 8000,
-      });
+      // On first attempt use full connect with params; retries use connect-saved (faster)
+      const res = attempt === 0
+        ? await deviceApi.connect({
+            deviceId:  deviceFormRef.current.deviceId,
+            ipAddress: deviceFormRef.current.ipAddress,
+            port:      deviceFormRef.current.port,
+            license:   deviceFormRef.current.license,
+            timeoutMs: 6000,   // 6s is enough for LAN; saves 2s vs previous 8s
+          })
+        : await deviceApi.connectSaved();   // reuses bridge's in-memory config  sub-second
       if (!mountedRef.current) return;
       setDevice(res.data.data);
       setConnected(true);
@@ -297,12 +299,13 @@ export default function SmartAttendanceDashboard() {
     } catch (err: any) {
       if (!mountedRef.current) return;
       setDevice(null); setConnected(false);
-      const isFatal = attempt >= 2;
-      setConnectStatus(isFatal ? "retrying" : "connecting");
+      setConnectStatus("retrying");
       if (attempt === 0 || attempt % 5 === 0) {
         toast.error(`Device unreachable - retrying...`, { id: "ac" });
       }
-      autoConnectRef.current = setTimeout(() => attemptConnect(attempt + 1), Math.min(5000 * (attempt + 1), 30000));
+      // Capped exponential backoff: 3s, 5s, 8s ... max 20s (not 30s  faster recovery)
+      const delay = Math.min(3000 + attempt * 2000, 20000);
+      autoConnectRef.current = setTimeout(() => attemptConnect(attempt + 1), delay);
     }
   }
 
@@ -373,7 +376,7 @@ export default function SmartAttendanceDashboard() {
     finally { setBusy(false); }
   }
 
-  /* ── Students view helpers ──────────────────────────── */
+  /* Students view helpers */
   async function loadStudents() {
     setBusy(true);
     try {
@@ -389,7 +392,7 @@ export default function SmartAttendanceDashboard() {
     return `${l.studentName} ${l.studentId ?? ""} ${l.className ?? ""}`.toLowerCase().includes(q);
   });
 
-  /* ── School auth helpers ─────────────────────────────── */
+  /* School auth helpers */
   const switchToProtectedView = (view: NavView) => {
     if (schoolLoggedIn) { setActiveView(view); return; }
     setLoginPending(view);
@@ -423,7 +426,7 @@ export default function SmartAttendanceDashboard() {
     toast.success("Logged out from school server");
   };
 
-  /* ── Dev modal helpers ──────────────────────────────── */
+  /* Dev modal helpers */
   const openDevModal = () => {
     setDevPassword(""); setDevPasswordError(""); setShowDevPassword(false);
     setDevPendingAction("settings");
@@ -462,9 +465,11 @@ export default function SmartAttendanceDashboard() {
     const cfg = { ...devForm };
     setDeviceForm(cfg); deviceFormRef.current = cfg;
     closeDevModal();
-    toast.loading("Saving settings & reconnecting...", { id: "ac" });
+    // Show success immediately - dont block UI waiting for device TCP handshake
+    toast.success("Settings saved - connecting...", { id: "ac" });
     if (autoConnectRef.current) clearTimeout(autoConnectRef.current);
-    deviceApi.connect({ ...cfg, timeoutMs: 10000, saveConfig: true })
+    setConnectAttempt(0);
+    deviceApi.connect({ ...cfg, timeoutMs: 6000, saveConfig: true })
       .then(res => {
         if (!mountedRef.current) return;
         setDevice(res.data.data); setConnected(true); setConnectStatus("connected");
@@ -474,12 +479,11 @@ export default function SmartAttendanceDashboard() {
       .catch(() => {
         if (!mountedRef.current) return;
         setDevice(null); setConnected(false); setConnectStatus("retrying");
-        toast.error(`Cannot reach ${cfg.ipAddress} - retrying...`, { id: "ac" });
+        toast.error(`Saved. Cannot reach ${cfg.ipAddress} - retrying...`, { id: "ac" });
         setTimeout(() => attemptConnect(0), 500);
       });
   }
-
-  /* ── WireGuard wizard helpers ───────────────────────── */
+  /* WireGuard wizard helpers */
   function openWgWizard() {
     setDevPassword(""); setDevPasswordError(""); setShowDevPassword(false);
     setDevPendingAction("wireguard");
@@ -612,9 +616,9 @@ export default function SmartAttendanceDashboard() {
     setTimeout(() => setCopiedKey(false), 2000);
   }
 
-  /* ═══════════════════════════════════════════════════════
+  /* 
      RENDER
-  ═══════════════════════════════════════════════════════ */
+   */
   return (
     <div className="fixed inset-0 flex overflow-hidden bg-[#070b14]">
 
@@ -967,10 +971,10 @@ export default function SmartAttendanceDashboard() {
                 <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-4">
                   <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Live Device Info</p>
                   <div className="grid grid-cols-2 gap-3 text-sm">
-                    <div><p className="text-slate-500">Serial</p><p className="font-medium text-slate-200">{device.serialNumber || "—"}</p></div>
-                    <div><p className="text-slate-500">Product</p><p className="font-medium text-slate-200">{device.productName || device.productCode || "—"}</p></div>
-                    <div><p className="text-slate-500">Users</p><p className="font-medium text-slate-200">{device.users ?? "—"}</p></div>
-                    <div><p className="text-slate-500">Logs</p><p className="font-medium text-slate-200">{(device as any).logs ?? "—"}</p></div>
+                    <div><p className="text-slate-500">Serial</p><p className="font-medium text-slate-200">{device.serialNumber || ""}</p></div>
+                    <div><p className="text-slate-500">Product</p><p className="font-medium text-slate-200">{device.productName || device.productCode || ""}</p></div>
+                    <div><p className="text-slate-500">Users</p><p className="font-medium text-slate-200">{device.users ?? ""}</p></div>
+                    <div><p className="text-slate-500">Logs</p><p className="font-medium text-slate-200">{(device as any).logs ?? ""}</p></div>
                   </div>
                 </div>
               )}
