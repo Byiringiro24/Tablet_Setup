@@ -1386,6 +1386,204 @@ app.post('/api/wireguard/ping', async (req, res) => {
   }
 });
 
+// ============================================================
+// SCHOOL SERVER RELAY
+// Proxies requests to the central school server (ecareafrica.net)
+// The tablet stores the school auth token in memory after login.
+// All relay endpoints require ?token= or Authorization header.
+// ============================================================
+
+const SERVER_API_URL = process.env.SERVER_API_URL || 'https://backend.ecareafrica.net/api/v1';
+
+// In-memory token store (one token per tablet session)
+let schoolAuthToken = null;
+let schoolUser = null;
+
+// Helper: relay a request to the school server
+async function relayToServer(method, path, body, token) {
+  const url = `${SERVER_API_URL}${path}`;
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const opts = { method, headers };
+  if (body && method !== 'GET') opts.body = JSON.stringify(body);
+  const res = await fetch(url, opts);
+  const json = await res.json().catch(() => ({ success: false, error: 'Invalid response' }));
+  return { status: res.status, json };
+}
+
+// POST /api/school/login
+// Authenticate with the school server, store token in memory
+app.post('/api/school/login', async (req, res) => {
+  const { email, password } = req.body || {};
+  if (!email || !password) return res.status(400).json({ success: false, error: 'email and password required' });
+  try {
+    const { status, json } = await relayToServer('POST', '/auth/login', { email, password }, null);
+    if (json.success !== false && (json.data?.accessToken || json.accessToken)) {
+      schoolAuthToken = json.data?.accessToken ?? json.accessToken;
+      schoolUser = json.data?.user ?? json.user ?? null;
+      return res.json({ success: true, user: schoolUser, token: schoolAuthToken });
+    }
+    res.status(status).json({ success: false, error: json.error?.message ?? json.message ?? 'Login failed' });
+  } catch (err) {
+    res.status(502).json({ success: false, error: `Cannot reach school server: ${err.message}` });
+  }
+});
+
+// POST /api/school/logout
+app.post('/api/school/logout', (req, res) => {
+  schoolAuthToken = null;
+  schoolUser = null;
+  res.json({ success: true });
+});
+
+// GET /api/school/me
+app.get('/api/school/me', (req, res) => {
+  res.json({ success: true, user: schoolUser, loggedIn: !!schoolAuthToken });
+});
+
+// ── Middleware: require school token ─────────────────────────────────────────
+function requireSchoolToken(req, res, next) {
+  const token = req.headers['x-school-token'] || req.query.token || schoolAuthToken;
+  if (!token) return res.status(401).json({ success: false, error: 'Not logged in to school server' });
+  req.schoolToken = token;
+  next();
+}
+
+// ── Approved Exits (Gate Keeper) ─────────────────────────────────────────────
+// GET /api/school/approved-exits
+app.get('/api/school/approved-exits', requireSchoolToken, async (req, res) => {
+  const date = req.query.date || '';
+  const { status, json } = await relayToServer('GET', `/boarding/leaves/approved-exits${date ? `?date=${date}` : ''}`, null, req.schoolToken);
+  res.status(status).json(json);
+});
+
+// PATCH /api/school/leaves/:id/confirm-exit
+app.patch('/api/school/leaves/:id/confirm-exit', requireSchoolToken, async (req, res) => {
+  const { status, json } = await relayToServer('PATCH', `/boarding/leaves/${req.params.id}/confirm-exit`, req.body, req.schoolToken);
+  res.status(status).json(json);
+});
+
+// PATCH /api/school/leaves/:id/confirm-return
+app.patch('/api/school/leaves/:id/confirm-return', requireSchoolToken, async (req, res) => {
+  const { status, json } = await relayToServer('PATCH', `/boarding/leaves/${req.params.id}/confirm-return`, req.body, req.schoolToken);
+  res.status(status).json(json);
+});
+
+// ── Leave Management (Patron/DOD view) ───────────────────────────────────────
+// GET /api/school/leaves
+app.get('/api/school/leaves', requireSchoolToken, async (req, res) => {
+  const qs = new URLSearchParams(req.query).toString();
+  const { status, json } = await relayToServer('GET', `/boarding/leaves${qs ? `?${qs}` : ''}`, null, req.schoolToken);
+  res.status(status).json(json);
+});
+
+// POST /api/school/leaves
+app.post('/api/school/leaves', requireSchoolToken, async (req, res) => {
+  const { status, json } = await relayToServer('POST', '/boarding/leaves', req.body, req.schoolToken);
+  res.status(status).json(json);
+});
+
+// ── Manual Attendance ─────────────────────────────────────────────────────────
+// GET /api/school/students  -- fetch students by class or dormitory
+app.get('/api/school/students', requireSchoolToken, async (req, res) => {
+  const qs = new URLSearchParams(req.query).toString();
+  const { status, json } = await relayToServer('GET', `/students${qs ? `?${qs}` : ''}`, null, req.schoolToken);
+  res.status(status).json(json);
+});
+
+// GET /api/school/classes
+app.get('/api/school/classes', requireSchoolToken, async (req, res) => {
+  const { status, json } = await relayToServer('GET', '/classes?limit=200', null, req.schoolToken);
+  res.status(status).json(json);
+});
+
+// GET /api/school/dormitories
+app.get('/api/school/dormitories', requireSchoolToken, async (req, res) => {
+  const { status, json } = await relayToServer('GET', '/boarding/dormitories?limit=200', null, req.schoolToken);
+  res.status(status).json(json);
+});
+
+// POST /api/school/attendance/manual
+// Body: { session_id, records: [{ student_id, status, reason? }] }
+app.post('/api/school/attendance/manual', requireSchoolToken, async (req, res) => {
+  const { session_id, records } = req.body || {};
+  if (!session_id || !Array.isArray(records)) {
+    return res.status(400).json({ success: false, error: 'session_id and records[] required' });
+  }
+  // Submit each correction — relay individually (server has no bulk endpoint)
+  const results = [];
+  for (const rec of records) {
+    if (!rec.student_id || !rec.status) continue;
+    const { status, json } = await relayToServer(
+      'PATCH', `/boarding/attendance/sessions/${session_id}/correct`,
+      { student_id: rec.student_id, status: rec.status, reason: rec.reason || 'Manual attendance via tablet' },
+      req.schoolToken
+    );
+    results.push({ student_id: rec.student_id, ok: status < 300, error: json?.error });
+  }
+  res.json({ success: true, results });
+});
+
+// POST /api/school/gate-attendance  -- manual gate attendance (entry/exit without biometric)
+app.post('/api/school/gate-attendance', requireSchoolToken, async (req, res) => {
+  const { status, json } = await relayToServer('POST', '/gate/logs', req.body, req.schoolToken);
+  res.status(status).json(json);
+});
+
+// ── User Management ───────────────────────────────────────────────────────────
+// GET /api/school/users
+app.get('/api/school/users', requireSchoolToken, async (req, res) => {
+  const qs = new URLSearchParams(req.query).toString();
+  const { status, json } = await relayToServer('GET', `/users${qs ? `?${qs}` : ''}`, null, req.schoolToken);
+  res.status(status).json(json);
+});
+
+// POST /api/school/users
+app.post('/api/school/users', requireSchoolToken, async (req, res) => {
+  const { status, json } = await relayToServer('POST', '/users', req.body, req.schoolToken);
+  res.status(status).json(json);
+});
+
+// PATCH /api/school/users/:id
+app.patch('/api/school/users/:id', requireSchoolToken, async (req, res) => {
+  const { status, json } = await relayToServer('PATCH', `/users/${req.params.id}`, req.body, req.schoolToken);
+  res.status(status).json(json);
+});
+
+// DELETE /api/school/users/:id
+app.delete('/api/school/users/:id', requireSchoolToken, async (req, res) => {
+  const { status, json } = await relayToServer('DELETE', `/users/${req.params.id}`, null, req.schoolToken);
+  res.status(status).json(json);
+});
+
+// ── Boarding sessions (patron) ────────────────────────────────────────────────
+app.get('/api/school/boarding/sessions', requireSchoolToken, async (req, res) => {
+  const qs = new URLSearchParams(req.query).toString();
+  const { status, json } = await relayToServer('GET', `/boarding/attendance/sessions${qs ? `?${qs}` : ''}`, null, req.schoolToken);
+  res.status(status).json(json);
+});
+
+app.get('/api/school/boarding/sessions/:id', requireSchoolToken, async (req, res) => {
+  const { status, json } = await relayToServer('GET', `/boarding/attendance/sessions/${req.params.id}`, null, req.schoolToken);
+  res.status(status).json(json);
+});
+
+// ── Student photo proxy (fetches photo from server, serves to tablet frontend) ─
+app.get('/api/school/photo', requireSchoolToken, async (req, res) => {
+  const url = req.query.url;
+  if (!url) return res.status(400).json({ error: 'url param required' });
+  try {
+    const photoRes = await fetch(url, { headers: { Authorization: `Bearer ${req.schoolToken}` } });
+    if (!photoRes.ok) return res.status(photoRes.status).send('Not found');
+    res.set('Content-Type', photoRes.headers.get('content-type') || 'image/jpeg');
+    res.set('Cache-Control', 'public, max-age=3600');
+    const buffer = await photoRes.arrayBuffer();
+    res.send(Buffer.from(buffer));
+  } catch (err) {
+    res.status(502).send('Photo fetch failed');
+  }
+});
+
 const PORT = Number(process.env.PORT || 5000);
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`FK Attendance Backend running on http://localhost:${PORT}`);

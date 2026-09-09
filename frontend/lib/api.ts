@@ -74,3 +74,62 @@ export const wireguardApi = {
 };
 
 export default api;
+
+// ── School Server API (proxied through tablet bridge) ─────────────────────────
+// All calls go to localhost:5000/api/school/* which relays to the central server
+
+export const schoolApi = {
+  // Auth
+  login: (email: string, password: string) =>
+    api.post('/school/login', { email, password }),
+  logout: () =>
+    api.post('/school/logout'),
+  me: () =>
+    api.get('/school/me'),
+
+  // Gate Keeper — approved exits
+  getApprovedExits: (date?: string) =>
+    api.get(`/school/approved-exits${date ? `?date=${date}` : ''}`),
+  confirmExit: (id: string, notes?: string) =>
+    api.patch(`/school/leaves/${id}/confirm-exit`, { notes }),
+  confirmReturn: (id: string) =>
+    api.patch(`/school/leaves/${id}/confirm-return`, {}),
+
+  // Leave list (patron/DOD view)
+  getLeaves: (params?: Record<string, string>) =>
+    api.get(`/school/leaves${params ? `?${new URLSearchParams(params)}` : ''}`),
+  createLeave: (data: Record<string, unknown>) =>
+    api.post('/school/leaves', data),
+
+  // Manual attendance
+  getStudents: (params?: Record<string, string>) =>
+    api.get(`/school/students${params ? `?${new URLSearchParams(params)}` : ''}`),
+  getClasses: () =>
+    api.get('/school/classes'),
+  getDormitories: () =>
+    api.get('/school/dormitories'),
+  submitManualAttendance: (sessionId: string, records: Array<{ student_id: string; status: string; reason?: string }>) =>
+    api.post('/school/attendance/manual', { session_id: sessionId, records }),
+  recordGateAttendance: (data: Record<string, unknown>) =>
+    api.post('/school/gate-attendance', data),
+
+  // Boarding sessions
+  getBoardingSessions: (params?: Record<string, string>) =>
+    api.get(`/school/boarding/sessions${params ? `?${new URLSearchParams(params)}` : ''}`),
+  getBoardingSession: (id: string) =>
+    api.get(`/school/boarding/sessions/${id}`),
+
+  // Users
+  getUsers: (params?: Record<string, string>) =>
+    api.get(`/school/users${params ? `?${new URLSearchParams(params)}` : ''}`),
+  createUser: (data: Record<string, unknown>) =>
+    api.post('/school/users', data),
+  updateUser: (id: string, data: Record<string, unknown>) =>
+    api.patch(`/school/users/${id}`, data),
+  deleteUser: (id: string) =>
+    api.delete(`/school/users/${id}`),
+
+  // Photo proxy
+  photoUrl: (originalUrl: string) =>
+    `http://localhost:5000/api/school/photo?url=${encodeURIComponent(originalUrl)}`,
+};
