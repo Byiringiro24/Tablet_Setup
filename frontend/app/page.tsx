@@ -149,34 +149,86 @@ export default function SmartAttendanceDashboard() {
   const [svcInstalling,setSvcInstalling] = useState(false);
   const [copiedKey,    setCopiedKey]     = useState(false);
 
-  /* Sidebar visibility */
-  const [sidebarVisible, setSidebarVisible] = useState(true);
-  const [sidebarLocked,  setSidebarLocked]  = useState(false);
-  const sidebarTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /* ── Sidebar state machine ─────────────────────────────────
+     expanded  → full w-56, labels visible
+     collapsed → icon-only w-14, hover expands back
+     hidden    → off-screen (absolute positioned overlay)
+     On mobile: overlay drawer that slides in from left
+  ──────────────────────────────────────────────────────────── */
+  type SidebarState = "expanded" | "collapsed" | "hidden";
+  const [sidebarState, setSidebarState] = useState<SidebarState>("expanded");
+  const [mobileOpen,   setMobileOpen]   = useState(false);
+  const collapseTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hideTimer      = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isHovering     = useRef(false);
 
-  const resetSidebarTimer = useCallback(() => {
-    if (sidebarTimerRef.current) clearTimeout(sidebarTimerRef.current);
-    setSidebarVisible(true);
-    if (!sidebarLocked) {
-      sidebarTimerRef.current = setTimeout(() => setSidebarVisible(false), 10000);
-    }
-  }, [sidebarLocked]);
-
+  // Detect small screen (portrait tablet / phone)
+  const [isSmall, setIsSmall] = useState(false);
   useEffect(() => {
-    const evts = ["mousemove","mousedown","keydown","touchstart","scroll"];
-    evts.forEach(e => window.addEventListener(e, resetSidebarTimer, { passive: true }));
-    resetSidebarTimer();
-    return () => {
-      evts.forEach(e => window.removeEventListener(e, resetSidebarTimer));
-      if (sidebarTimerRef.current) clearTimeout(sidebarTimerRef.current);
-    };
-  }, [resetSidebarTimer]);
+    const check = () => setIsSmall(window.innerWidth < 860);
+    check();
+    window.addEventListener("resize", check, { passive: true });
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
-  const handleSidebarEnter = () => {
-    setSidebarLocked(true); setSidebarVisible(true);
-    if (sidebarTimerRef.current) clearTimeout(sidebarTimerRef.current);
+  // Clear both timers
+  const clearSidebarTimers = () => {
+    if (collapseTimer.current) { clearTimeout(collapseTimer.current); collapseTimer.current = null; }
+    if (hideTimer.current)     { clearTimeout(hideTimer.current);     hideTimer.current     = null; }
   };
-  const handleSidebarLeave = () => { setSidebarLocked(false); resetSidebarTimer(); };
+
+  // Start the auto-collapse → auto-hide sequence
+  const startIdleTimers = useCallback(() => {
+    if (isHovering.current || isSmall) return;
+    clearSidebarTimers();
+    collapseTimer.current = setTimeout(() => {
+      setSidebarState("collapsed");
+      hideTimer.current = setTimeout(() => {
+        if (!isHovering.current) setSidebarState("hidden");
+      }, 6000);
+    }, 8000);
+  }, [isSmall]);
+
+  // User moved — reset to expanded and restart timers
+  const onActivity = useCallback(() => {
+    if (isSmall) return;
+    setSidebarState(prev => prev === "hidden" ? "hidden" : "expanded");
+    startIdleTimers();
+  }, [isSmall, startIdleTimers]);
+
+  // Listen for global activity
+  useEffect(() => {
+    const evts = ["mousemove", "mousedown", "keydown", "touchstart", "scroll"];
+    evts.forEach(e => window.addEventListener(e, onActivity, { passive: true }));
+    startIdleTimers();
+    return () => {
+      evts.forEach(e => window.removeEventListener(e, onActivity));
+      clearSidebarTimers();
+    };
+  }, [onActivity, startIdleTimers]);
+
+  const handleSidebarMouseEnter = () => {
+    if (isSmall) return;
+    isHovering.current = true;
+    clearSidebarTimers();
+    setSidebarState("expanded");
+  };
+  const handleSidebarMouseLeave = () => {
+    if (isSmall) return;
+    isHovering.current = false;
+    startIdleTimers();
+  };
+
+  // Computed sidebar width class for layout shift
+  const sidebarWidth = sidebarState === "expanded" ? "w-56"
+                     : sidebarState === "collapsed" ? "w-14"
+                     : "w-0";
+  const isCollapsed = sidebarState === "collapsed";
+  const isHidden    = sidebarState === "hidden";
+
+  // (sidebar logic moved to state machine above)
+
+  // (event listeners handled by sidebar state machine above)
 
   /* SSE + auto-connect */
   const onFreshRef = useRef<(logs: AttendanceLog[]) => void>(() => {});
@@ -622,77 +674,110 @@ export default function SmartAttendanceDashboard() {
   return (
     <div className="fixed inset-0 flex overflow-hidden bg-[#070b14]">
 
-      {/* Collapsed sidebar show button */}
-      {!sidebarVisible && (
-        <button
-          onClick={() => { setSidebarVisible(true); resetSidebarTimer(); }}
-          className="fixed left-0 top-1/2 -translate-y-1/2 z-40 flex items-center rounded-r-xl border border-l-0 border-slate-700 bg-slate-900/95 px-2 py-5 text-slate-400 hover:text-cyan-400 shadow-xl transition"
-        >
-          <FiChevronRight />
-        </button>
+      {/* ── MOBILE OVERLAY BACKDROP ── */}
+      {isSmall && mobileOpen && (
+        <div className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm"
+          onClick={() => setMobileOpen(false)} />
       )}
 
-      {/* SIDEBAR */}
+      {/* ── SIDEBAR ─────────────────────────────────────────── */}
+      {/* Desktop: part of flex flow, pushes main content */}
+      {/* Mobile:  absolute overlay drawer */}
       <aside
-        onMouseEnter={handleSidebarEnter}
-        onMouseLeave={handleSidebarLeave}
-        className={`relative flex flex-col shrink-0 w-56 border-r border-slate-800/60 bg-slate-900/95 transition-all duration-300 ${sidebarVisible ? "translate-x-0" : "-translate-x-full"} overflow-y-auto`}
+        onMouseEnter={handleSidebarMouseEnter}
+        onMouseLeave={handleSidebarMouseLeave}
+        className={`
+          flex flex-col border-r border-slate-800/60 bg-slate-900/98
+          transition-all duration-300 ease-in-out overflow-hidden z-40
+          ${isSmall
+            /* Mobile: absolute drawer */
+            ? `fixed inset-y-0 left-0 w-72 shadow-2xl shadow-black/60
+               ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`
+            /* Desktop: in-flow, 3 widths */
+            : `relative shrink-0 ${sidebarWidth}
+               ${isHidden ? "border-transparent" : ""}`
+          }
+        `}
       >
-        {/* Logo */}
-        <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
-          <span className="text-sm font-bold text-white">EcaAfrica</span>
-          <button onClick={() => setSidebarVisible(false)}
-            className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-800 hover:text-white transition">
-            <FiChevronsLeft />
-          </button>
+        {/* Logo row */}
+        <div className={`flex items-center border-b border-slate-800 px-3 py-4 shrink-0
+          ${isCollapsed && !isSmall ? "justify-center" : "justify-between"}`}>
+          {(!isCollapsed || isSmall) && (
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-cyan-500/20 text-cyan-400 text-sm font-black">E</div>
+              <span className="text-sm font-bold text-white truncate">EcaAfrica</span>
+            </div>
+          )}
+          {isCollapsed && !isSmall && (
+            <div className="grid h-8 w-8 place-items-center rounded-lg bg-cyan-500/20 text-cyan-400 text-sm font-black">E</div>
+          )}
+          {/* Close btn */}
+          {(!isCollapsed || isSmall) && (
+            <button
+              onClick={() => isSmall ? setMobileOpen(false) : setSidebarState("collapsed")}
+              className="shrink-0 rounded-lg p-1.5 text-slate-500 hover:bg-slate-800 hover:text-white transition">
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+              </svg>
+            </button>
+          )}
         </div>
 
-        {/* Nav */}
-        <nav className="mb-4 p-3 space-y-1 text-sm flex-1">
-          <NavItem active={activeView === "dashboard"} onClick={() => setActiveView("dashboard")} icon={<FiActivity />} label="Dashboard" />
-          <NavItem active={activeView === "students"}  onClick={() => setActiveView("students")}  icon={<FiUsers />}    label="Students" />
-          {/* Gate Keeper - opens directly without extra login (login inside the panel) */}
-          <NavItem active={activeView === "gate"}
-            onClick={() => setActiveView("gate")}
-            icon={<FiShield />} label="Gate Keeper" />
-          {/* Attendance and Users require school login */}
-          <NavItem active={activeView === "attendance"}
-            onClick={() => switchToProtectedView("attendance")}
-            icon={<FiCheckCircle />} label="Attendance" />
-          <NavItem active={activeView === "users"}
-            onClick={() => switchToProtectedView("users")}
-            icon={<FiUserCheck />} label="Users" />
+        {/* Nav items */}
+        <nav className={`flex-1 overflow-y-auto py-3 space-y-0.5 ${isCollapsed && !isSmall ? "px-1" : "px-2"}`}>
+          {[
+            { view: "dashboard",  icon: <FiActivity />,    label: "Dashboard"   },
+            { view: "students",   icon: <FiUsers />,       label: "Students"    },
+            { view: "gate",       icon: <FiShield />,      label: "Gate Keeper" },
+            { view: "attendance", icon: <FiCheckCircle />, label: "Attendance"  },
+            { view: "users",      icon: <FiUserCheck />,   label: "Users"       },
+          ].map(({ view, icon, label }) => (
+            <NavItem
+              key={view}
+              icon={icon}
+              label={label}
+              collapsed={isCollapsed && !isSmall}
+              active={activeView === view}
+              onClick={() => {
+                if (isSmall) setMobileOpen(false);
+                if (view === "gate") setActiveView("gate");
+                else if (view === "attendance" || view === "users") switchToProtectedView(view as NavView);
+                else setActiveView(view as NavView);
+              }}
+            />
+          ))}
 
-          {schoolLoggedIn && (
-            <div className="mt-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 px-3 py-2 text-xs text-emerald-300">
-              <p className="font-semibold truncate">{schoolUser?.name ?? schoolUser?.role}</p>
-              <button onClick={handleSchoolLogout} className="text-emerald-400 hover:text-white underline text-[10px]">Logout</button>
+          {/* Logged-in badge */}
+          {schoolLoggedIn && !isCollapsed && (
+            <div className="mx-1 mt-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 px-3 py-2.5">
+              <p className="text-xs font-semibold text-emerald-300 truncate">{schoolUser?.name ?? schoolUser?.role}</p>
+              <button onClick={handleSchoolLogout} className="text-[10px] text-emerald-400 hover:text-white underline mt-0.5">Logout</button>
             </div>
           )}
         </nav>
 
-        {/* Dashboard panel content */}
-        {activeView === "dashboard" && (
-          <div className="flex flex-1 flex-col min-h-0 px-3 pb-3">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
+        {/* Dashboard log panel — only when expanded */}
+        {activeView === "dashboard" && !isCollapsed && (
+          <div className="flex flex-col min-h-0 px-2 pb-3 border-t border-slate-800 pt-3" style={{ maxHeight: "40vh" }}>
+            <div className="mb-2 flex items-center justify-between shrink-0">
+              <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                 <FiDatabase className="text-cyan-400" /> Logs
               </span>
-              <div className="flex items-center gap-1">
+              <div className="flex gap-1">
                 <select value={readMode} onChange={e => setReadMode(Number(e.target.value))}
-                  className="rounded-lg border border-slate-700 bg-slate-800 px-1.5 py-0.5 text-xs text-slate-300 outline-none">
+                  className="rounded-lg border border-slate-700 bg-slate-800 px-1.5 py-1 text-[10px] text-slate-300 outline-none">
                   <option value={0}>All</option>
                   <option value={1}>New</option>
                 </select>
                 <button onClick={pullLogs} disabled={busy || !connected} title="Pull logs"
-                  className="rounded-lg border border-slate-700 bg-slate-800 p-1.5 text-slate-400 hover:text-cyan-400 disabled:opacity-40">
+                  className="rounded-lg border border-slate-700 bg-slate-800 p-1.5 text-slate-400 hover:text-cyan-400 disabled:opacity-40 touch-manipulation">
                   <FiDownloadCloud className="text-xs" />
                 </button>
               </div>
             </div>
             <input value={query} onChange={e => setQuery(e.target.value)}
               placeholder="Search logs..." autoComplete="off"
-              className="mb-2 w-full rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs text-slate-100 outline-none placeholder:text-slate-600 focus:border-cyan-400" />
+              className="mb-2 w-full rounded-xl border border-slate-700 bg-slate-800 px-2.5 py-2 text-xs text-slate-100 outline-none placeholder:text-slate-600 focus:border-cyan-400 shrink-0" />
             <div className="flex-1 overflow-y-auto space-y-1 min-h-0">
               {filteredLogs.slice(0, 50).map(l => (
                 <div key={l.id} className="rounded-lg border border-slate-800 bg-slate-800/50 p-2 text-xs">
@@ -710,10 +795,10 @@ export default function SmartAttendanceDashboard() {
           </div>
         )}
 
-        {/* Students panel content */}
-        {activeView === "students" && (
-          <div className="flex flex-1 flex-col min-h-0 px-3 pb-3 overflow-y-auto space-y-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Register Student</p>
+        {/* Students panel — only when expanded */}
+        {activeView === "students" && !isCollapsed && (
+          <div className="flex flex-col min-h-0 px-2 pb-3 border-t border-slate-800 pt-3 overflow-y-auto space-y-3" style={{ maxHeight: "55vh" }}>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0">Register Student</p>
             <SideField label="Full Name *" value={studentForm.name} onChange={v => setStudentForm(f => ({...f, name: v}))} placeholder="Student name" required />
             <SideField label="Student ID" value={studentForm.studentId} onChange={v => setStudentForm(f => ({...f, studentId: v}))} placeholder="STU-001" />
             <SideField label="Device User ID *" value={studentForm.studentDeviceId} onChange={v => setStudentForm(f => ({...f, studentDeviceId: v}))} placeholder="Device user ID" required />
@@ -738,85 +823,106 @@ export default function SmartAttendanceDashboard() {
                 setBusy(false);
               }}
               disabled={busy}
-              className="w-full rounded-xl bg-cyan-600 py-2 text-xs font-semibold text-white hover:bg-cyan-500 disabled:opacity-50"
-            >
-              Register Student
-            </button>
-            <div className="border-t border-slate-800 pt-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Registered ({students.length})</p>
-              <button onClick={loadStudents} disabled={busy} className="mb-2 w-full rounded-lg border border-slate-700 bg-slate-800/50 py-1.5 text-xs text-slate-400 hover:text-white disabled:opacity-40">
-                <FiRefreshCw className="inline mr-1" /> Refresh
-              </button>
+              className="w-full rounded-xl bg-cyan-600 py-3 text-sm font-semibold text-white hover:bg-cyan-500 disabled:opacity-50 touch-manipulation shrink-0"
+            >Register Student</button>
+            <div className="border-t border-slate-800 pt-2 shrink-0">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Registered ({students.length})</p>
+                <button onClick={loadStudents} disabled={busy} className="rounded-lg border border-slate-700 p-1.5 text-xs text-slate-400 hover:text-white disabled:opacity-40 touch-manipulation">
+                  <FiRefreshCw className={busy ? "animate-spin" : ""} />
+                </button>
+              </div>
               {students.map(s => (
-                <div key={s.studentDeviceId} className="mb-1 rounded-lg border border-slate-800 bg-slate-800/40 p-2 text-xs">
+                <div key={s.studentDeviceId} className="mb-1 rounded-xl border border-slate-800 bg-slate-800/40 p-2.5 text-xs">
                   <p className="font-semibold">{s.name}</p>
-                  <p className="text-slate-500">{s.className}{s.section ? ` - ${s.section}` : ""}</p>
+                  <p className="text-slate-500">{s.className}{s.section ? ` · ${s.section}` : ""}</p>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* Bottom buttons */}
-        <div className="shrink-0 space-y-2 border-t border-slate-800 p-3">
+        {/* Bottom dev buttons */}
+        <div className={`shrink-0 space-y-2 border-t border-slate-800 p-2`}>
           <button onClick={openDevModal}
-            className="group flex w-full items-center gap-2 rounded-xl border border-slate-700/40 bg-slate-800/30 px-3 py-1.5 text-slate-600 transition-all duration-300 hover:border-amber-500/40 hover:bg-amber-500/10 hover:py-3 hover:text-amber-300">
-            <FiSettings className="shrink-0 text-sm transition-transform duration-300 group-hover:text-base" />
-            <span className="text-[11px] font-medium transition-all duration-300 group-hover:text-xs">Developer</span>
+            className={`group flex w-full items-center gap-2.5 rounded-xl border border-slate-700/40 bg-slate-800/30 text-slate-500
+              hover:border-amber-500/40 hover:bg-amber-500/10 hover:text-amber-300 transition-all duration-200 touch-manipulation
+              ${isCollapsed && !isSmall ? "justify-center px-0 py-3" : "px-3 py-2.5"}`}
+            title={isCollapsed && !isSmall ? "Developer" : undefined}>
+            <FiSettings className="shrink-0 text-base" />
+            {(!isCollapsed || isSmall) && <span className="text-xs font-medium">Developer</span>}
           </button>
           <button onClick={openWgWizard}
-            className="group flex w-full items-center gap-2 rounded-xl border border-slate-700/40 bg-slate-800/30 px-3 py-1.5 text-slate-600 transition-all duration-300 hover:border-cyan-500/40 hover:bg-cyan-500/10 hover:py-3 hover:text-cyan-300">
-            <FiShield className="shrink-0 text-sm transition-transform duration-300 group-hover:text-base" />
-            <span className="text-[11px] font-medium transition-all duration-300 group-hover:text-xs">WireGuard VPN</span>
+            className={`group flex w-full items-center gap-2.5 rounded-xl border border-slate-700/40 bg-slate-800/30 text-slate-500
+              hover:border-cyan-500/40 hover:bg-cyan-500/10 hover:text-cyan-300 transition-all duration-200 touch-manipulation
+              ${isCollapsed && !isSmall ? "justify-center px-0 py-3" : "px-3 py-2.5"}`}
+            title={isCollapsed && !isSmall ? "WireGuard VPN" : undefined}>
+            <FiShield className="shrink-0 text-base" />
+            {(!isCollapsed || isSmall) && <span className="text-xs font-medium">WireGuard VPN</span>}
           </button>
         </div>
       </aside>
 
-      {/* MAIN AREA */}
-      <main className="relative flex flex-1 flex-col overflow-hidden">
+      {/* ── MAIN AREA ────────────────────────────────────────── */}
+      <main className="relative flex flex-1 flex-col overflow-hidden min-w-0">
         {liveLog && <LiveAttendanceScreen log={liveLog} onDismiss={dismissLive} />}
 
         {!liveLog && (
           <div className="flex h-full flex-col overflow-hidden">
-            <div className="flex shrink-0 items-center justify-between border-b border-slate-800 bg-slate-900/80 px-6 py-3 backdrop-blur-sm">
-              <div>
-                <h2 className="text-xl font-bold text-white">School Attendance</h2>
-                <p className="text-xs text-slate-500">FK biometric real-time tracking</p>
+            {/* Top header */}
+            <div className="flex shrink-0 items-center justify-between border-b border-slate-800 bg-slate-900/80 px-4 py-3 backdrop-blur-sm gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                {/* Hamburger — always show on mobile, show on desktop when hidden */}
+                {(isSmall || isHidden) && (
+                  <button
+                    onClick={() => isSmall ? setMobileOpen(true) : setSidebarState("expanded")}
+                    className="shrink-0 rounded-xl border border-slate-700 bg-slate-800 p-2.5 text-slate-300 hover:text-white transition touch-manipulation">
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
+                  </button>
+                )}
+                <div className="min-w-0">
+                  <h1 className="text-base sm:text-lg font-bold text-white truncate">School Attendance</h1>
+                  <p className="text-[10px] text-slate-500 hidden sm:block">FK biometric · real-time</p>
+                </div>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 shrink-0">
                 <AutoConnectBadge status={connectStatus} attempt={connectAttempt} />
                 <button onClick={() => { if (autoConnectRef.current) clearTimeout(autoConnectRef.current); attemptConnect(0); }}
                   disabled={connectStatus === "connecting"}
-                  className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700 disabled:opacity-50 transition">
+                  className="hidden sm:flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-slate-300 hover:bg-slate-700 disabled:opacity-50 transition touch-manipulation">
                   <FiRefreshCw className={connectStatus === "connecting" ? "animate-spin" : ""} /> Reconnect
                 </button>
               </div>
             </div>
 
-            <div className="flex flex-1 flex-col overflow-hidden p-5 gap-5">
-              {/* Stats */}
-              <div className="grid shrink-0 grid-cols-2 gap-4 xl:grid-cols-4">
-                <SummaryTile label="Total Students"    value={stats.totalStudents}   color="cyan" />
-                <SummaryTile label="Attendance Today"  value={stats.attendanceToday} color="emerald" />
-                <SummaryTile label="Devices"           value={`${stats.onlineDevices}/${stats.totalDevices}`} color="indigo" />
-                <SummaryTile label="Total Logs"        value={stats.totalLogs}       color="slate" />
+            {/* Dashboard content */}
+            <div className="flex flex-1 flex-col overflow-hidden p-4 gap-4">
+              {/* Stats grid */}
+              <div className="grid shrink-0 grid-cols-2 gap-3 lg:grid-cols-4">
+                <SummaryTile label="Total Students"   value={stats.totalStudents}   color="cyan" />
+                <SummaryTile label="Attendance Today" value={stats.attendanceToday} color="emerald" />
+                <SummaryTile label="Devices"          value={`${stats.onlineDevices}/${stats.totalDevices}`} color="indigo" />
+                <SummaryTile label="Total Logs"       value={stats.totalLogs}       color="slate" />
               </div>
 
-              {/* Device + push row */}
-              <div className="grid shrink-0 gap-4 xl:grid-cols-[0.8fr_1.2fr]">
+              {/* Device + push cards */}
+              <div className="grid shrink-0 gap-4 lg:grid-cols-2">
                 <div className="dashboard-panel p-5">
-                  <h3 className="mb-3 shrink-0 text-base font-bold">Device Status</h3>
-                  <div className="flex-1 space-y-3 text-sm">
+                  <h3 className="mb-3 text-base font-bold">Device Status</h3>
+                  <div className="space-y-3">
                     <InfoRow label="IP Address" value={deviceForm.ipAddress} />
                     <InfoRow label="Location"   value={deviceForm.location} />
-                    <InfoRow label="Status" value={connected ? "Online" : connectStatus === "connecting" ? "Connecting..." : "Offline"}
-                      valueClass={connected ? "text-green-400" : "text-amber-400"} />
+                    <InfoRow label="Status"
+                      value={connected ? "Online" : connectStatus === "connecting" ? "Connecting..." : "Offline"}
+                      valueClass={connected ? "text-emerald-400" : "text-amber-400"} />
                     {device?.serialNumber && <InfoRow label="Serial" value={device.serialNumber} />}
-                    {device?.users != null && <InfoRow label="Users" value={String(device.users)} />}
+                    {device?.users != null  && <InfoRow label="Users"  value={String(device.users)} />}
                   </div>
-                  <div className="mt-4 flex shrink-0 gap-2">
-                    <button onClick={pullUsers} disabled={busy || !connected} className="secondary-action flex-1 py-2 text-xs">Pull Users</button>
-                    <button onClick={syncTime}  disabled={busy || !connected} className="secondary-action flex-1 py-2 text-xs">Sync Time</button>
+                  <div className="mt-4 flex gap-2">
+                    <button onClick={pullUsers} disabled={busy || !connected} className="secondary-action flex-1 py-2.5 text-xs touch-manipulation">Pull Users</button>
+                    <button onClick={syncTime}  disabled={busy || !connected} className="secondary-action flex-1 py-2.5 text-xs touch-manipulation">Sync Time</button>
                   </div>
                 </div>
 
@@ -824,11 +930,11 @@ export default function SmartAttendanceDashboard() {
                   <div className="mb-3 flex items-center justify-between">
                     <h3 className="text-base font-bold">Push Students</h3>
                     <button onClick={pushStudents} disabled={busy || !connected}
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-blue-500/40 bg-blue-500/10 px-3 py-2 text-xs font-semibold text-blue-300 hover:bg-blue-500/20 disabled:opacity-50">
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-blue-500/40 bg-blue-500/10 px-4 py-2.5 text-xs font-semibold text-blue-300 hover:bg-blue-500/20 disabled:opacity-50 touch-manipulation">
                       <FiUploadCloud /> Push All
                     </button>
                   </div>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-slate-500 leading-relaxed">
                     Enroll students on the FK623 biometric device so they can scan for attendance.
                     Students must be pushed before they can mark attendance.
                   </p>
