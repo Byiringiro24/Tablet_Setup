@@ -27,7 +27,7 @@ Captured from WireGuard Windows client on August 7, 2026:
 | DNS Server | `1.1.1.1` |
 | Peer Public Key | `5IpzSFa0lCjJjWZW+gAXEJfxxcwlkrJOpAoeafs9EWQ=` |
 | Allowed IPs | `10.0.0.0/24` |
-| Current Endpoint | `13.140.133.61:51820` *(old server — to be replaced)* |
+| Current Endpoint | `169.58.124.150:51820` *(updated server endpoint; migrated from 13.140.133.61)* |
 | Persistent Keepalive | `25` seconds |
 
 ---

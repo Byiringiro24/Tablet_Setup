@@ -36,6 +36,30 @@ let autoConnectAttempt = 0;
 // Never re-read from disk during auto-connect to avoid stale browser overwrites.
 let activeDeviceConfig = loadDeviceConfig();
 
+// Simple fake bridge handler for local testing when FKBridge.exe is not available.
+// Enable by setting environment variable FAKE_BRIDGE=1 before starting the server.
+const _fakeUsers = [
+  { userId: '1', name: 'Test Student', backupNumber: 0, privilege: 0, enabled: 1 },
+];
+const _fakeLogs = [
+  { id: 'log-1', userId: '1', timestamp: new Date().toISOString(), method: 'FP', direction: 'IN' },
+];
+async function fakeBridgeHandler(command, timeoutMs = 30000) {
+  const parts = String(command || '').split('|');
+  const verb = parts[0] || '';
+  // quick simulated latency
+  await new Promise((r) => setTimeout(r, 150));
+  if (verb === 'CONNECT') {
+    const ip = parts[1] || '127.0.0.1';
+    return { success: true, data: { connected: true, ipAddress: ip, deviceId: 'FAKE_DEVICE_1' } };
+  }
+  if (verb === 'STATUS') return { success: true, data: { connected: false } };
+  if (verb === 'GET_LOGS') return { success: true, data: { logs: _fakeLogs } };
+  if (verb === 'GET_USERS') return { success: true, data: { users: _fakeUsers } };
+  if (verb === 'GET_LOGS|0') return { success: true, data: { logs: _fakeLogs } };
+  return { success: true, data: {} };
+}
+
 // SSE clients â€” set of response objects
 const sseClients = new Set();
 
@@ -365,6 +389,7 @@ let commandLock = false;
 const commandQueue = [];
 
 async function sendCommand(command, timeoutMs = 30000) {
+  if (process.env.FAKE_BRIDGE === '1') return fakeBridgeHandler(command, timeoutMs);
   await ensureBridge();
   // Serialize all commands through a queue so they never overlap
   return new Promise((resolve) => {
@@ -394,6 +419,7 @@ async function drainCommandQueue() {
 }
 
 async function sendCommandRaw(command, timeoutMs = 30000) {
+  if (process.env.FAKE_BRIDGE === '1') return fakeBridgeHandler(command, timeoutMs);
   await ensureBridge();
   return new Promise((resolve) => {
     let done = false;
@@ -533,7 +559,13 @@ function attendanceFromLog(log) {
     timestamp: log.timestamp,
     status: resolved.status,
     attendancePeriod: resolved.period,
-    photoUrl: (() => { const u = student?.photoUrl || ''; if (!u) return ''; if (u.startsWith('http://localhost') || u.startsWith('data:')) return u; return `http://localhost:${PORT}/api/school/photo?url=${encodeURIComponent(u)}`; })(),
+    photoUrl: (() => {
+      const u = student?.photoUrl || '';
+      if (!u) return '';
+      if (u.startsWith('http://localhost') || u.startsWith('data:')) return u;
+      const port = Number(process.env.PORT || PORT || 5000);
+      return `http://localhost:${port}/api/school/photo?url=${encodeURIComponent(u)}`;
+    })(),
     verified: true,
     rawData: log,
   };
