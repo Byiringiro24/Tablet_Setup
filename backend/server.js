@@ -1,4 +1,4 @@
-﻿ const express = require('express');
+ const express = require('express');
 const cors = require('cors');
 const { spawn, execFile } = require('child_process');
 const path = require('path');
@@ -533,7 +533,7 @@ function attendanceFromLog(log) {
     timestamp: log.timestamp,
     status: resolved.status,
     attendancePeriod: resolved.period,
-    photoUrl: (() => { const u = student?.photoUrl || ''; if (!u) return ''; if (u.startsWith('http://localhost') || u.startsWith('data:')) return u; return http://localhost:/api/school/photo?url=; })(),
+    photoUrl: (() => { const u = student?.photoUrl || ''; if (!u) return ''; if (u.startsWith('http://localhost') || u.startsWith('data:')) return u; return `http://localhost:${PORT}/api/school/photo?url=${encodeURIComponent(u)}`; })(),
     verified: true,
     rawData: log,
   };
@@ -897,8 +897,8 @@ const WG_DNS = process.env.WG_DNS || '1.1.1.1';
 const TABLET_UUID = process.env.TABLET_UUID || '';
 
 const WG_EXE = 'C:\\Program Files\\WireGuard\\wg.exe';
+// Detect the actual active WireGuard tunnel name dynamically — don't hardcode
 const WIREGUARD_TUNNEL_NAME = 'EcareAfrica';
-// WireGuard stores tunnel configs here on Windows
 const WG_TUNNEL_DIR = `${process.env.PROGRAMDATA || 'C:\\ProgramData'}\\WireGuard`;
 
 function runPS(script, timeoutMs = 15000) {
@@ -943,54 +943,68 @@ app.get('/api/wireguard/status', async (req, res) => {
   const wgExeExists  = fsSync.existsSync(WG_EXE);
   const wguiExists   = fsSync.existsSync('C:\\Program Files\\WireGuard\\wireguard.exe');
   const installed    = wgExeExists && wguiExists;
-
   let tunnelActive  = false;
   let vpnIp         = null;
   let publicKey     = null;
   let lastHandshake = null;
   let tunnelExists  = false;
+  let activeTunnelName = WIREGUARD_TUNNEL_NAME;
 
   if (installed) {
+    // Use netsh to detect WireGuard adapter — fast, no admin needed
     try {
-      // `wg show all` lists all active interfaces â€” safer than `wg show <name>` which errors when absent
-      const showAll = await runWg('show', 'all').catch(() => '');
-      if (showAll.includes(WIREGUARD_TUNNEL_NAME)) {
+      const netshOut = await new Promise((resolve) => {
+        execFile('netsh', ['interface', 'ipv4', 'show', 'addresses'], { timeout: 5000, windowsHide: true }, (err, stdout) => {
+          resolve(err ? '' : stdout);
+        });
+      });
+      // Also check adapter list via ipconfig
+      const ipconfigOut = await new Promise((resolve) => {
+        execFile('ipconfig', [], { timeout: 5000, windowsHide: true }, (err, stdout) => {
+          resolve(err ? '' : stdout);
+        });
+      });
+      // Look for 10.0.x.x address — if present the WireGuard tunnel is up
+      const vpnMatch = ipconfigOut.match(/IPv4 Address[.\s]+:\s*(10\.0\.\d+\.\d+)/i);
+      if (vpnMatch) {
+        tunnelActive = true;
         tunnelExists = true;
-        // Now get detail for our specific tunnel
-        const show = await runWg('show', WIREGUARD_TUNNEL_NAME).catch(() => '');
-        if (show.includes('interface:') || show.includes('listening port')) {
-          tunnelActive = true;
-          // Read VPN IP from the interface address, not the peer's allowed-ips
-          // `wg show EcareAfrica` output has: "interface: EcareAfrica" then details
-          // The address is not in wg show output — read it from the config file instead
-          const hsMatch = show.match(/latest handshake:\s*(.+)/i);
-          if (hsMatch) lastHandshake = hsMatch[1].trim();
-        }
+        vpnIp = vpnMatch[1];
+      } else {
+        // Check if adapter exists but not connected
+        const adapterOut = await new Promise((resolve) => {
+          execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+            'Get-NetAdapter | Where-Object { $_.InterfaceDescription -like "*WireGuard*" } | Select-Object -ExpandProperty Status'
+          ], { timeout: 6000, windowsHide: true }, (err, stdout) => {
+            resolve(err ? '' : stdout);
+          });
+        });
+        if (adapterOut.trim()) tunnelExists = true;
+        if (adapterOut.toLowerCase().includes('up')) tunnelActive = true;
       }
-    } catch { /* no active tunnels */ }
+    } catch { /* detection failed */ }
 
     // Read saved public key from disk
     try {
       const keyFile = path.join(__dirname, 'data', 'wireguard-public.key');
       if (fsSync.existsSync(keyFile)) {
         publicKey = fsSync.readFileSync(keyFile, 'utf8').trim();
-        // Validate it looks like a real WireGuard key (44-char base64)
         if (!/^[A-Za-z0-9+/]{43}=$/.test(publicKey)) publicKey = null;
       }
     } catch { /* no saved key */ }
   }
 
-  // Read VPN IP from the saved config file — this is the source of truth
-  // wg show does not expose the interface Address, only the peer AllowedIPs
-  try {
-    const confPath = path.join(WG_TUNNEL_DIR, `${WIREGUARD_TUNNEL_NAME}.conf`);
-    if (fsSync.existsSync(confPath)) {
-      const conf = fsSync.readFileSync(confPath, 'utf8');
-      // Match Address = 10.0.0.3/32 — capture just the IP, not the /32
-      const m = conf.match(/^Address\s*=\s*([\d.]+)(?:\/\d+)?/im);
-      if (m) vpnIp = m[1];
-    }
-  } catch { /* ignore */ }
+  // Read VPN IP from saved config if adapter method did not get it
+  if (!vpnIp) {
+    try {
+      const confPath = path.join(WG_TUNNEL_DIR, `${WIREGUARD_TUNNEL_NAME}.conf`);
+      if (fsSync.existsSync(confPath)) {
+        const conf = fsSync.readFileSync(confPath, 'utf8');
+        const m = conf.match(/^Address\s*=\s*([\d.]+)(?:\/\d+)?/im);
+        if (m) vpnIp = m[1];
+      }
+    } catch { /* ignore */ }
+  }
 
   res.json({
     success: true,
@@ -1092,7 +1106,7 @@ app.post('/api/wireguard/install', async (req, res) => {
   const confContent = [
     '[Interface]',
     `PrivateKey = ${privateKey}`,
-    `Address = ${vpnIp}/32`,
+    `Address = ${vpnIp}/24`,
     `DNS = ${dns || WG_DNS}`,
     '',
     '[Peer]',
