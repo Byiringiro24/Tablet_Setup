@@ -3,53 +3,74 @@
 
 import { FiLoader, FiWifi, FiWifiOff } from "react-icons/fi";
 
+// ── NavItem ─────────────────────────────────────────────────
+// collapsed=true  → icon-only pill (no label)
+// collapsed=false → icon + label
+
 export function NavItem({
-  icon, label, active = false, onClick,
+  icon, label, active = false, collapsed = false, onClick,
 }: {
   icon: React.ReactNode;
   label: string;
   active?: boolean;
+  collapsed?: boolean;
   onClick?: () => void;
 }) {
   return (
     <div
       onClick={onClick}
-      className={`flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition select-none
+      title={collapsed ? label : undefined}
+      className={`
+        group relative flex cursor-pointer items-center gap-3 rounded-xl
+        px-3 py-3 text-sm font-medium transition-all duration-200 select-none
+        touch-manipulation
+        ${collapsed ? "justify-center" : ""}
         ${active
-          ? "border border-cyan-500/50 bg-cyan-500/15 text-white"
-          : "text-slate-400 hover:bg-slate-800 hover:text-white"
-        }`}
+          ? "border border-cyan-500/50 bg-cyan-500/15 text-white shadow-sm shadow-cyan-900/30"
+          : "text-slate-400 hover:bg-slate-800/80 hover:text-white"
+        }
+      `}
     >
-      {icon}
-      {label}
+      <span className="shrink-0 text-[18px] leading-none">{icon}</span>
+      {!collapsed && <span className="leading-snug truncate">{label}</span>}
+
+      {/* Tooltip when collapsed */}
+      {collapsed && (
+        <span className="pointer-events-none absolute left-full ml-3 z-50 whitespace-nowrap rounded-lg bg-slate-800 border border-slate-700 px-3 py-1.5 text-xs font-semibold text-white opacity-0 shadow-xl transition-opacity group-hover:opacity-100">
+          {label}
+        </span>
+      )}
     </div>
   );
 }
 
+// ── SideField ───────────────────────────────────────────────
 export function SideField({
-  label, value, onChange, placeholder, required = false,
+  label, value, onChange, placeholder, required = false, type = "text",
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   required?: boolean;
+  type?: string;
 }) {
   return (
     <label className="block">
-      <span className="mb-0.5 block text-[10px] text-slate-500">{label}</span>
+      <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</span>
       <input
         required={required}
-        type="text"
+        type={type}
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-lg border border-slate-700 bg-slate-800/90 px-2.5 py-1.5 text-xs text-slate-100 outline-none placeholder:text-slate-600 focus:border-cyan-400"
+        className="w-full rounded-xl border border-slate-700 bg-slate-800/90 px-3 py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/30 transition"
       />
     </label>
   );
 }
 
+// ── SideSelect ──────────────────────────────────────────────
 export function SideSelect({
   label, value, onChange, options,
 }: {
@@ -60,11 +81,11 @@ export function SideSelect({
 }) {
   return (
     <label className="block">
-      <span className="mb-0.5 block text-[10px] text-slate-500">{label}</span>
+      <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</span>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-lg border border-slate-700 bg-slate-800/90 px-2.5 py-1.5 text-xs text-slate-100 outline-none focus:border-cyan-400"
+        className="w-full rounded-xl border border-slate-700 bg-slate-800/90 px-3 py-2.5 text-sm text-slate-100 outline-none focus:border-cyan-400 transition"
       >
         {options.map((o) => <option key={o}>{o}</option>)}
       </select>
@@ -72,20 +93,22 @@ export function SideSelect({
   );
 }
 
+// ── StatusPill ──────────────────────────────────────────────
 export function StatusPill({ status, small = false }: { status: string; small?: boolean }) {
   const s = status.toLowerCase();
   const color = s.includes("late")
-    ? "bg-amber-500/20 text-amber-300"
+    ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
     : s.includes("absent")
-    ? "bg-red-500/20 text-red-300"
-    : "bg-green-500/20 text-green-300";
+    ? "bg-red-500/20 text-red-300 border border-red-500/30"
+    : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
   return (
-    <span className={`rounded-full font-medium ${small ? "px-2 py-0.5 text-[10px]" : "px-3 py-1 text-xs"} ${color}`}>
+    <span className={`rounded-full font-semibold ${small ? "px-2 py-0.5 text-[10px]" : "px-3 py-1 text-xs"} ${color}`}>
       {status}
     </span>
   );
 }
 
+// ── SummaryTile ─────────────────────────────────────────────
 export function SummaryTile({ label, value, color }: { label: string; value: string | number; color: string }) {
   const map: Record<string, string> = {
     cyan:    "border-cyan-500/30 bg-cyan-500/10 text-cyan-300",
@@ -97,13 +120,14 @@ export function SummaryTile({ label, value, color }: { label: string; value: str
     slate:   "border-slate-600/40 bg-slate-800/50 text-slate-300",
   };
   return (
-    <div className={`rounded-xl border p-4 ${map[color] ?? map.slate}`}>
-      <p className="text-xs opacity-60">{label}</p>
-      <p className="mt-1 text-2xl font-bold">{value}</p>
+    <div className={`rounded-2xl border p-4 ${map[color] ?? map.slate}`}>
+      <p className="text-xs font-medium opacity-60 truncate">{label}</p>
+      <p className="mt-1 text-2xl font-black leading-none">{value}</p>
     </div>
   );
 }
 
+// ── InfoRow ─────────────────────────────────────────────────
 export function InfoRow({
   label, value, valueClass = "text-slate-200",
 }: {
@@ -112,13 +136,14 @@ export function InfoRow({
   valueClass?: string;
 }) {
   return (
-    <div className="flex items-center justify-between border-b border-slate-800 pb-2 last:border-0 last:pb-0">
-      <span className="text-slate-500">{label}</span>
-      <span className={`font-medium ${valueClass}`}>{value}</span>
+    <div className="flex items-center justify-between border-b border-slate-800/60 pb-2 last:border-0 last:pb-0">
+      <span className="text-sm text-slate-500">{label}</span>
+      <span className={`text-sm font-semibold ${valueClass}`}>{value}</span>
     </div>
   );
 }
 
+// ── AutoConnectBadge ────────────────────────────────────────
 export function AutoConnectBadge({
   status, attempt,
 }: {
@@ -127,20 +152,20 @@ export function AutoConnectBadge({
 }) {
   if (status === "connected") {
     return (
-      <span className="flex items-center gap-1.5 rounded-full bg-green-500/20 px-3 py-1 text-sm text-green-300">
+      <span className="flex items-center gap-1.5 rounded-full bg-emerald-500/20 border border-emerald-500/30 px-3 py-1.5 text-xs font-semibold text-emerald-300">
         <FiWifi className="shrink-0" /> Online
       </span>
     );
   }
   if (status === "connecting") {
     return (
-      <span className="flex animate-pulse items-center gap-1.5 rounded-full bg-cyan-500/20 px-3 py-1 text-sm text-cyan-300">
+      <span className="flex animate-pulse items-center gap-1.5 rounded-full bg-cyan-500/20 border border-cyan-500/30 px-3 py-1.5 text-xs font-semibold text-cyan-300">
         <FiLoader className="shrink-0 animate-spin" /> Connecting...
       </span>
     );
   }
   return (
-    <span className="flex animate-pulse items-center gap-1.5 rounded-full bg-amber-500/20 px-3 py-1 text-sm text-amber-300">
+    <span className="flex animate-pulse items-center gap-1.5 rounded-full bg-amber-500/20 border border-amber-500/30 px-3 py-1.5 text-xs font-semibold text-amber-300">
       <FiWifiOff className="shrink-0" /> Reconnecting{attempt > 0 ? ` #${attempt + 1}` : ""}...
     </span>
   );
