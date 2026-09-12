@@ -1615,11 +1615,16 @@ app.get('/api/school/boarding/sessions/:id', requireSchoolToken, async (req, res
 });
 
 // ── Student photo proxy (fetches photo from server, serves to tablet frontend) ─
-app.get('/api/school/photo', requireSchoolToken, async (req, res) => {
+// Note: token passed as query param since this is used via <img src="...">
+app.get('/api/school/photo', async (req, res) => {
   const url = req.query.url;
   if (!url) return res.status(400).json({ error: 'url param required' });
+  // Use stored school token (works for img src calls that can't set headers)
+  const token = req.headers['authorization']?.replace('Bearer ', '') || schoolAuthToken;
   try {
-    const photoRes = await fetch(url, { headers: { Authorization: `Bearer ${req.schoolToken}` } });
+    const headers = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const photoRes = await fetch(url, { headers });
     if (!photoRes.ok) return res.status(photoRes.status).send('Not found');
     res.set('Content-Type', photoRes.headers.get('content-type') || 'image/jpeg');
     res.set('Cache-Control', 'public, max-age=3600');
