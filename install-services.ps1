@@ -3,20 +3,22 @@
 .SYNOPSIS
     EcaAfrica Tablet — Install Windows Services
     Installs the bridge (backend) and frontend as Windows services that start
-    automatically on boot, run as SYSTEM (elevated), and restart on crash.
+    automatically on boot, run as SYSTEM (full admin), and restart on crash.
+    Also installs the WireGuard VPN tunnel as a service if a config exists.
     No manual "Run as Administrator" ever needed after this runs once.
 
 .USAGE
-    Right-click this file → "Run with PowerShell"
+    Double-click: INSTALL (double-click me).bat
     OR in an admin PowerShell terminal:
         .\install-services.ps1
 
 .WHAT IT DOES
     1. Downloads NSSM (Non-Sucking Service Manager) if not present
-    2. Installs EcaAfrica-Bridge  → node backend/server.js   (port 5000)
-    3. Installs EcaAfrica-Frontend → npm run start            (port 3000)
-    4. Starts both services immediately
-    5. Verifies they are running
+    2. Installs EcaAfrica-Bridge  → node backend/server.js   (port 5000, runs as SYSTEM)
+    3. Installs EcaAfrica-Frontend → next start               (port 3000, runs as SYSTEM)
+    4. Installs WireGuard EcareAfrica tunnel as a service     (if conf exists)
+    5. Starts all services immediately
+    6. Verifies everything is running
 #>
 
 Set-StrictMode -Off
@@ -34,6 +36,9 @@ $NPM_EXE       = (Get-Command npm  -ErrorAction SilentlyContinue)?.Source
 
 $BRIDGE_SVC    = "EcaAfrica-Bridge"
 $FRONTEND_SVC  = "EcaAfrica-Frontend"
+$WG_TUNNEL     = "EcareAfrica"
+$WG_EXE        = "C:\Program Files\WireGuard\wireguard.exe"
+$WG_CONF       = "C:\ProgramData\WireGuard\$WG_TUNNEL.conf"
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 function Write-Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
@@ -63,14 +68,14 @@ if (-not $NODE_EXE) {
 }
 Write-OK "Node.js: $NODE_EXE  ($(node --version))"
 
-if (-not (Test-Path $BACKEND_DIR\server.js)) {
-    Write-Fail "backend\server.js not found. Make sure you are running this from the Tablet Setup folder."
+if (-not (Test-Path "$BACKEND_DIR\server.js")) {
+    Write-Fail "backend\server.js not found. Run this from the EcaAfrica folder."
     Read-Host "Press Enter to exit"
     exit 1
 }
 Write-OK "Backend: $BACKEND_DIR\server.js"
 
-if (-not (Test-Path $FRONTEND_DIR\package.json)) {
+if (-not (Test-Path "$FRONTEND_DIR\package.json")) {
     Write-Fail "frontend\package.json not found."
     Read-Host "Press Enter to exit"
     exit 1
@@ -89,82 +94,83 @@ if (-not (Test-Path $NSSM_EXE)) {
     Write-Warn "NSSM not found — downloading..."
     $nssmZip = Join-Path $env:TEMP "nssm.zip"
     try {
-        # NSSM 2.24 — stable release, widely used
         Invoke-WebRequest -Uri "https://nssm.cc/release/nssm-2.24.zip" `
             -OutFile $nssmZip -UseBasicParsing
         Expand-Archive -Path $nssmZip -DestinationPath $env:TEMP -Force
-        # NSSM zip contains win64\nssm.exe and win32\nssm.exe
         $arch = if ([Environment]::Is64BitOperatingSystem) { "win64" } else { "win32" }
         Copy-Item "$env:TEMP\nssm-2.24\$arch\nssm.exe" $NSSM_EXE -Force
-        Write-OK "NSSM downloaded and extracted"
+        Write-OK "NSSM downloaded"
     } catch {
         Write-Fail "Failed to download NSSM: $_"
-        Write-Warn "Manual fix: Download nssm.exe from https://nssm.cc/download and put it in: $NSSM_DIR"
+        Write-Warn "Download nssm.exe from https://nssm.cc/download and place it in: $NSSM_DIR"
         Read-Host "Press Enter to exit"
         exit 1
     }
 } else {
-    Write-OK "NSSM already present: $NSSM_EXE"
+    Write-OK "NSSM: $NSSM_EXE"
 }
+
+# ── Install backend deps ───────────────────────────────────────────────────────
+Write-Step "Installing backend dependencies"
+Push-Location $BACKEND_DIR
+try {
+    & $NPM_EXE install --production --prefer-offline 2>&1 | Out-Null
+    Write-OK "Backend npm install done"
+} catch {
+    Write-Warn "npm install warning: $_ (continuing)"
+} finally { Pop-Location }
 
 # ── Build frontend if .next folder missing ─────────────────────────────────────
 Write-Step "Checking frontend build"
 $nextBuildDir = Join-Path $FRONTEND_DIR ".next"
 if (-not (Test-Path $nextBuildDir)) {
-    Write-Warn ".next build folder not found — running npm run build (this takes ~2 minutes)..."
+    Write-Warn ".next not found — running npm run build (~2 minutes)..."
     Push-Location $FRONTEND_DIR
     try {
+        & $NPM_EXE install 2>&1 | Out-Null
         & $NPM_EXE run build
         Write-OK "Frontend build complete"
     } catch {
-        Write-Warn "Frontend build failed: $_"
-        Write-Warn "The frontend service will still be installed but may not start until you run: npm run build"
-    } finally {
-        Pop-Location
-    }
+        Write-Warn "Frontend build failed: $_ — service installed but may not start until you run: npm run build"
+    } finally { Pop-Location }
 } else {
-    Write-OK ".next build exists — skipping rebuild"
+    Write-OK ".next build exists"
 }
 
 # ── Install Backend (Bridge) Service ──────────────────────────────────────────
-Write-Step "Installing EcaAfrica-Bridge service"
+Write-Step "Installing EcaAfrica-Bridge service (runs as SYSTEM)"
 Stop-AndRemove $BRIDGE_SVC
 
-& $NSSM_EXE install $BRIDGE_SVC $NODE_EXE "server.js"
-& $NSSM_EXE set $BRIDGE_SVC AppDirectory     $BACKEND_DIR
-& $NSSM_EXE set $BRIDGE_SVC DisplayName      "EcaAfrica Bridge (FK623 attendance)"
-& $NSSM_EXE set $BRIDGE_SVC Description      "Connects to the FK623 biometric device and syncs attendance to the school server via WireGuard VPN"
-& $NSSM_EXE set $BRIDGE_SVC Start            SERVICE_AUTO_START
-& $NSSM_EXE set $BRIDGE_SVC ObjectName       LocalSystem   # runs as SYSTEM = full admin
-& $NSSM_EXE set $BRIDGE_SVC AppStdout        "$LOG_DIR\bridge-out.log"
-& $NSSM_EXE set $BRIDGE_SVC AppStderr        "$LOG_DIR\bridge-err.log"
-& $NSSM_EXE set $BRIDGE_SVC AppRotateFiles   1
-& $NSSM_EXE set $BRIDGE_SVC AppRotateBytes   10485760      # rotate at 10 MB
-& $NSSM_EXE set $BRIDGE_SVC AppRestartDelay  3000          # wait 3s before restart on crash
-& $NSSM_EXE set $BRIDGE_SVC AppThrottle      5000          # max 1 restart per 5s
-& $NSSM_EXE set $BRIDGE_SVC DependOnService  Tcpip         # wait for network
+& $NSSM_EXE install     $BRIDGE_SVC $NODE_EXE "server.js"
+& $NSSM_EXE set         $BRIDGE_SVC AppDirectory     $BACKEND_DIR
+& $NSSM_EXE set         $BRIDGE_SVC DisplayName      "EcaAfrica Bridge (FK623 + WireGuard)"
+& $NSSM_EXE set         $BRIDGE_SVC Description      "Manages FK623 biometric device, WireGuard VPN, and syncs attendance to school server"
+& $NSSM_EXE set         $BRIDGE_SVC Start            SERVICE_AUTO_START
+& $NSSM_EXE set         $BRIDGE_SVC ObjectName       LocalSystem        # SYSTEM = full Administrator, no UAC
+& $NSSM_EXE set         $BRIDGE_SVC AppStdout        "$LOG_DIR\bridge-out.log"
+& $NSSM_EXE set         $BRIDGE_SVC AppStderr        "$LOG_DIR\bridge-err.log"
+& $NSSM_EXE set         $BRIDGE_SVC AppRotateFiles   1
+& $NSSM_EXE set         $BRIDGE_SVC AppRotateBytes   10485760
+& $NSSM_EXE set         $BRIDGE_SVC AppRestartDelay  3000
+& $NSSM_EXE set         $BRIDGE_SVC AppThrottle      5000
+& $NSSM_EXE set         $BRIDGE_SVC DependOnService  Tcpip
 
-Write-OK "EcaAfrica-Bridge installed"
+Write-OK "EcaAfrica-Bridge installed (SYSTEM)"
 
 # ── Install Frontend Service ───────────────────────────────────────────────────
-Write-Step "Installing EcaAfrica-Frontend service"
+Write-Step "Installing EcaAfrica-Frontend service (runs as SYSTEM)"
 Stop-AndRemove $FRONTEND_SVC
 
-# Find npm's actual .cmd path so NSSM can run it
-$npmCmd = (Get-Command npm).Source -replace "npm$","npm.cmd"
-if (-not (Test-Path $npmCmd)) { $npmCmd = $NPM_EXE }
-
-# Use node to run next start directly (more reliable than npm in a service)
 $nextScript = Join-Path $FRONTEND_DIR "node_modules\.bin\next"
 if (Test-Path "$nextScript.cmd") {
-    & $NSSM_EXE install $FRONTEND_SVC $NODE_EXE "$nextScript start --port 3000"
+    & $NSSM_EXE install $FRONTEND_SVC $NODE_EXE "`"$nextScript`" start --port 3000"
 } else {
     & $NSSM_EXE install $FRONTEND_SVC $NPM_EXE "run start"
 }
 
 & $NSSM_EXE set $FRONTEND_SVC AppDirectory     $FRONTEND_DIR
 & $NSSM_EXE set $FRONTEND_SVC DisplayName      "EcaAfrica Frontend (tablet web UI)"
-& $NSSM_EXE set $FRONTEND_SVC Description      "Serves the tablet attendance web interface on http://localhost:3000"
+& $NSSM_EXE set $FRONTEND_SVC Description      "Serves the attendance dashboard on http://localhost:3000"
 & $NSSM_EXE set $FRONTEND_SVC Start            SERVICE_AUTO_START
 & $NSSM_EXE set $FRONTEND_SVC ObjectName       LocalSystem
 & $NSSM_EXE set $FRONTEND_SVC AppStdout        "$LOG_DIR\frontend-out.log"
@@ -173,68 +179,117 @@ if (Test-Path "$nextScript.cmd") {
 & $NSSM_EXE set $FRONTEND_SVC AppRotateBytes   10485760
 & $NSSM_EXE set $FRONTEND_SVC AppRestartDelay  3000
 & $NSSM_EXE set $FRONTEND_SVC AppThrottle      5000
-& $NSSM_EXE set $FRONTEND_SVC DependOnService  "$BRIDGE_SVC"  # frontend starts after bridge
+& $NSSM_EXE set $FRONTEND_SVC DependOnService  $BRIDGE_SVC
 
-Write-OK "EcaAfrica-Frontend installed"
+Write-OK "EcaAfrica-Frontend installed (SYSTEM)"
 
-# ── Start both services ────────────────────────────────────────────────────────
-Write-Step "Starting services"
-Start-Service -Name $BRIDGE_SVC
-Start-Sleep 3
-Start-Service -Name $FRONTEND_SVC
+# ── Install WireGuard Tunnel Service ──────────────────────────────────────────
+Write-Step "WireGuard VPN tunnel"
+if (-not (Test-Path $WG_EXE)) {
+    Write-Warn "WireGuard not installed — skipping tunnel service. Install from https://www.wireguard.com/install/ then run wizard from the dashboard."
+} elseif (-not (Test-Path $WG_CONF)) {
+    Write-Warn "No WireGuard config found at $WG_CONF"
+    Write-Warn "Use the WireGuard VPN wizard in the dashboard (http://localhost:3000) to generate keys and configure the tunnel."
+    Write-Warn "After Step 4 (Activate), the tunnel will be installed as a service automatically."
+} else {
+    Write-OK "WireGuard config found: $WG_CONF"
+    # Remove existing tunnel service if present
+    $wgSvcName = "WireGuardTunnel`$$WG_TUNNEL"
+    $wgSvc = Get-Service -Name $wgSvcName -ErrorAction SilentlyContinue
+    if ($wgSvc -and $wgSvc.Status -eq "Running") {
+        Write-Warn "Stopping existing WireGuard tunnel..."
+        Stop-Service -Name $wgSvcName -Force -ErrorAction SilentlyContinue
+        Start-Sleep 2
+    }
+    & $WG_EXE /uninstalltunnelservice $WG_TUNNEL 2>&1 | Out-Null
+    Start-Sleep 2
+
+    # Install tunnel — runs as SYSTEM (wireguard.exe /installtunnelservice always runs elevated)
+    & $WG_EXE /installtunnelservice $WG_CONF
+    Start-Sleep 3
+
+    $wgRunning = Get-Service -Name $wgSvcName -ErrorAction SilentlyContinue
+    if ($wgRunning -and $wgRunning.Status -eq "Running") {
+        Write-OK "WireGuard tunnel EcareAfrica installed and RUNNING"
+    } else {
+        Write-Warn "WireGuard tunnel installed but not yet running — it will start automatically on next boot or when the WireGuard app activates it."
+    }
+}
+
+# ── Set WireGuard Manager to auto-start ───────────────────────────────────────
+Write-Step "Configuring WireGuard Manager auto-start"
+$wgMgr = Get-Service -Name "WireGuardManager" -ErrorAction SilentlyContinue
+if ($wgMgr) {
+    Set-Service -Name "WireGuardManager" -StartupType Automatic
+    if ($wgMgr.Status -ne "Running") { Start-Service "WireGuardManager" -ErrorAction SilentlyContinue }
+    Write-OK "WireGuard Manager set to auto-start"
+} else {
+    Write-Warn "WireGuard Manager service not found — install WireGuard first"
+}
+
+# ── Start EcaAfrica services ──────────────────────────────────────────────────
+Write-Step "Starting EcaAfrica services"
+Start-Service -Name $BRIDGE_SVC -ErrorAction SilentlyContinue
+Start-Sleep 4
+Start-Service -Name $FRONTEND_SVC -ErrorAction SilentlyContinue
 Start-Sleep 3
 
 # ── Verify ────────────────────────────────────────────────────────────────────
 Write-Step "Verifying services"
-$bSvc = Get-Service -Name $BRIDGE_SVC
-$fSvc = Get-Service -Name $FRONTEND_SVC
+$bSvc = Get-Service -Name $BRIDGE_SVC  -ErrorAction SilentlyContinue
+$fSvc = Get-Service -Name $FRONTEND_SVC -ErrorAction SilentlyContinue
 
-if ($bSvc.Status -eq "Running") {
-    Write-OK "$BRIDGE_SVC   is RUNNING"
+if ($bSvc -and $bSvc.Status -eq "Running") {
+    Write-OK "$BRIDGE_SVC    RUNNING  (as SYSTEM — full Administrator)"
 } else {
-    Write-Fail "$BRIDGE_SVC   is $($bSvc.Status) — check $LOG_DIR\bridge-err.log"
+    Write-Fail "$BRIDGE_SVC    $($bSvc?.Status ?? 'NOT FOUND') — check $LOG_DIR\bridge-err.log"
 }
 
-if ($fSvc.Status -eq "Running") {
-    Write-OK "$FRONTEND_SVC is RUNNING"
+if ($fSvc -and $fSvc.Status -eq "Running") {
+    Write-OK "$FRONTEND_SVC  RUNNING  (as SYSTEM — full Administrator)"
 } else {
-    Write-Fail "$FRONTEND_SVC is $($fSvc.Status) — check $LOG_DIR\frontend-err.log"
+    Write-Fail "$FRONTEND_SVC  $($fSvc?.Status ?? 'NOT FOUND') — check $LOG_DIR\frontend-err.log"
 }
 
-# ── Quick HTTP check ───────────────────────────────────────────────────────────
+# ── HTTP health check ─────────────────────────────────────────────────────────
 Write-Step "HTTP health check"
-Start-Sleep 4
+Start-Sleep 5
 try {
     $health = Invoke-RestMethod -Uri "http://localhost:5000/api/health" -TimeoutSec 10
-    Write-OK "Bridge API:    http://localhost:5000/api/health — status: $($health.status)"
+    Write-OK "Backend API    http://localhost:5000   status=$($health.status)  bridge=$($health.bridgeReady)"
 } catch {
-    Write-Warn "Bridge API not yet responding — may still be starting. Check $LOG_DIR\bridge-err.log"
+    Write-Warn "Backend not yet responding — check $LOG_DIR\bridge-err.log"
 }
 try {
     $null = Invoke-WebRequest -Uri "http://localhost:3000" -TimeoutSec 10 -UseBasicParsing
-    Write-OK "Frontend UI:   http://localhost:3000 — reachable"
+    Write-OK "Frontend UI    http://localhost:3000   reachable"
 } catch {
-    Write-Warn "Frontend not yet responding — may still be starting. Check $LOG_DIR\frontend-err.log"
+    Write-Warn "Frontend not yet responding — check $LOG_DIR\frontend-err.log"
 }
 
-# ── Summary ────────────────────────────────────────────────────────────────────
+# ── Summary ───────────────────────────────────────────────────────────────────
 Write-Host ""
-Write-Host "============================================================" -ForegroundColor Green
-Write-Host "  SETUP COMPLETE" -ForegroundColor Green
-Write-Host "============================================================" -ForegroundColor Green
+Write-Host "================================================================" -ForegroundColor Green
+Write-Host "  SETUP COMPLETE — All services run as SYSTEM (Administrator)" -ForegroundColor Green
+Write-Host "================================================================" -ForegroundColor Green
 Write-Host ""
-Write-Host "  Both services are now installed and will start automatically"
-Write-Host "  on every Windows boot — no manual action needed."
+Write-Host "  EcaAfrica-Bridge    → http://localhost:5000  (auto-start, SYSTEM)"
+Write-Host "  EcaAfrica-Frontend  → http://localhost:3000  (auto-start, SYSTEM)"
+Write-Host "  WireGuard EcareAfrica → auto-start on boot   (SYSTEM)"
 Write-Host ""
-Write-Host "  Bridge (backend):   http://localhost:5000"
-Write-Host "  Frontend (web UI):  http://localhost:3000"
-Write-Host "  Log files:          $LOG_DIR"
+Write-Host "  Because services run as SYSTEM:"
+Write-Host "  - WireGuard install/uninstall works without UAC prompts"
+Write-Host "  - FKBridge.exe has full access to COM ports and DLLs"
+Write-Host "  - No 'Run as Administrator' ever needed manually"
 Write-Host ""
-Write-Host "  To manage services later:"
-Write-Host "    View status:     Get-Service EcaAfrica-Bridge, EcaAfrica-Frontend"
-Write-Host "    Stop:            Stop-Service  EcaAfrica-Bridge"
-Write-Host "    Start:           Start-Service EcaAfrica-Bridge"
-Write-Host "    Uninstall:       .\uninstall-services.ps1"
+Write-Host "  Log files:  $LOG_DIR"
+Write-Host ""
+Write-Host "  Manage services:"
+Write-Host "    Restart-Service EcaAfrica-Bridge"
+Write-Host "    Restart-Service EcaAfrica-Frontend"
+Write-Host "    Get-Service EcaAfrica-Bridge, EcaAfrica-Frontend"
+Write-Host ""
+Write-Host "  To uninstall:  .\uninstall-services.ps1"
 Write-Host ""
 
 Read-Host "Press Enter to close"
