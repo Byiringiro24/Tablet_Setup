@@ -1168,12 +1168,12 @@ app.post('/api/wireguard/install', async (req, res) => {
 
   // Install tunnel via WireGuard CLI (requires admin — bridge must run as Administrator)
   try {
-    // Remove existing tunnel if present (ignore error if not installed)
-    await runPS(`& '${WG_EXE.replace(/'/g, "''")}' /uninstalltunnelservice ${WIREGUARD_TUNNEL_NAME}`)
+    // Remove existing tunnel (elevated via RunAs — works even if backend is not admin)
+    await runPS(`Start-Process -FilePath 'C:\\Program Files\\WireGuard\\wireguard.exe' -ArgumentList '/uninstalltunnelservice','${WIREGUARD_TUNNEL_NAME}' -Verb RunAs -Wait -ErrorAction SilentlyContinue`)
       .catch(() => null);
 
-    // Install & start the tunnel service from ProgramData location
-    await runPS(`& 'C:\\Program Files\\WireGuard\\wireguard.exe' /installtunnelservice '${confPath.replace(/'/g, "''")}'`);
+    // Install tunnel service with elevation — this is why it works without running backend as admin
+    await runPS(`Start-Process -FilePath 'C:\\Program Files\\WireGuard\\wireguard.exe' -ArgumentList '/installtunnelservice','${confPath.replace(/'/g, "''")}' -Verb RunAs -Wait`);
 
     // Give it 3s to establish
     await new Promise(r => setTimeout(r, 3000));
@@ -1384,7 +1384,7 @@ app.post('/api/wireguard/sync-key', async (req, res) => {
 // Removes the tunnel service (stops VPN).
 app.post('/api/wireguard/deactivate', async (req, res) => {
   try {
-    await runPS(`& 'C:\\Program Files\\WireGuard\\wireguard.exe' /uninstalltunnelservice ${WIREGUARD_TUNNEL_NAME}`);
+    await runPS(`Start-Process -FilePath 'C:\\Program Files\\WireGuard\\wireguard.exe' -ArgumentList '/uninstalltunnelservice','${WIREGUARD_TUNNEL_NAME}' -Verb RunAs -Wait`);
     res.json({ success: true, message: 'WireGuard tunnel stopped' });
   } catch (err) {
     const msg = err.message || '';
