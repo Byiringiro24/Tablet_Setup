@@ -1,4 +1,4 @@
- const express = require('express');
+﻿ const express = require('express');
 const cors = require('cors');
 const { spawn, execFile } = require('child_process');
 const path = require('path');
@@ -601,6 +601,29 @@ async function refreshUsersCache() {
   return result.success ? { ...result, data: { users: usersCache, count: usersCache.length } } : result;
 }
 
+// Tablet identity — cached from school server
+let tabletInfo = { name: null, location: null };
+
+async function fetchTabletInfo() {
+  if (!TABLET_UUID || !SERVER_API_URL) return;
+  try {
+    const res = await fetch(${SERVER_API_URL}/tablets?uuid=&limit=1, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!res.ok) return;
+    const json = await res.json();
+    const data = json?.data?.[0] ?? json?.[0] ?? null;
+    if (data) {
+      tabletInfo = { name: data.name || null, location: data.location || null };
+      console.log([Tablet] Identity loaded: "" @ );
+    }
+  } catch (err) {
+    console.warn('[Tablet] Could not fetch tablet info from server:', err.message);
+  }
+}
+fetchTabletInfo();
+setInterval(fetchTabletInfo, 5 * 60 * 1000);
+
 app.get('/api/health', async (req, res) => {
   const savedConfig = loadDeviceConfig();
   res.json({
@@ -611,13 +634,15 @@ app.get('/api/health', async (req, res) => {
     autoConnect: { enabled: autoConnectEnabled, attempt: autoConnectAttempt },
     savedConfig,
     tabletUuid: TABLET_UUID || null,
-    // VPN config â€” tablet wizard reads these to pre-fill the form
+    tabletName: tabletInfo.name,
+    tabletLocation: tabletInfo.location,
     vpn: {
       serverEndpoint: WG_SERVER_ENDPOINT,
       allowedIPs: VPN_ALLOWED_IPS,
       dns: WG_DNS,
     },
   });
+});
 });
 
 // Server-Sent Events â€” frontend subscribes here for real-time attendance updates
@@ -1647,3 +1672,4 @@ process.on('SIGINT', () => {
   if (bridgeProcess) bridgeProcess.kill();
   process.exit(0);
 });
+

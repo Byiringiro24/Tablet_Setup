@@ -114,6 +114,10 @@ export default function SmartAttendanceDashboard() {
   const [connectStatus,  setConnectStatus]  = useState<"connecting"|"connected"|"retrying">("connecting");
   const [connectAttempt, setConnectAttempt] = useState(0);
 
+  /* Tablet identity — fetched from server via /api/health */
+  const [tabletName,     setTabletName]     = useState<string | null>(null);
+  const [tabletLocation, setTabletLocation] = useState<string | null>(null);
+
   /*  Student form  */
   const [studentForm, setStudentForm] = useState({
     name: "", studentId: "", studentDeviceId: "",
@@ -291,7 +295,7 @@ export default function SmartAttendanceDashboard() {
     mountedRef.current = true;
     connectSSE();
     attemptConnect(0);
-    // Load saved config from backend
+    // Load saved config + tablet identity from backend
     fetch("http://localhost:5000/api/health")
       .then(r => r.json())
       .then(data => {
@@ -307,6 +311,9 @@ export default function SmartAttendanceDashboard() {
           setDeviceForm(cfg);
           deviceFormRef.current = cfg;
         }
+        // Tablet identity from server registry
+        if (data?.tabletName) setTabletName(data.tabletName);
+        if (data?.tabletLocation) setTabletLocation(data.tabletLocation);
       }).catch(() => {});
     return () => {
       mountedRef.current = false;
@@ -870,24 +877,39 @@ export default function SmartAttendanceDashboard() {
         {!liveLog && (
           <div className="flex h-full flex-col overflow-hidden">
             {/* Top header */}
-            <div className="flex shrink-0 items-center justify-between border-b border-slate-800 bg-slate-900/80 px-4 py-3 backdrop-blur-sm gap-3">
-              <div className="flex items-center gap-3 min-w-0">
-                {/* Hamburger — always show on mobile, show on desktop when hidden */}
+            <div className="flex shrink-0 items-center border-b border-slate-800 bg-slate-900/80 px-4 py-3 backdrop-blur-sm gap-3">
+              {/* Left — hamburger */}
+              <div className="shrink-0 w-10">
                 {(isSmall || isHidden) && (
                   <button
                     onClick={() => isSmall ? setMobileOpen(true) : setSidebarState("expanded")}
-                    className="shrink-0 rounded-xl border border-slate-700 bg-slate-800 p-2.5 text-slate-300 hover:text-white transition touch-manipulation">
+                    className="rounded-xl border border-slate-700 bg-slate-800 p-2.5 text-slate-300 hover:text-white transition touch-manipulation">
                     <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
                     </svg>
                   </button>
                 )}
-                <div className="min-w-0">
-                  <h1 className="text-base sm:text-lg font-bold text-white truncate">School Attendance</h1>
-                  <p className="text-[10px] text-slate-500 hidden sm:block">FK biometric · real-time</p>
-                </div>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
+
+              {/* Centre — tablet name + location */}
+              <div className="flex-1 text-center min-w-0">
+                {tabletName ? (
+                  <>
+                    <h1 className="text-base sm:text-xl font-black text-white truncate leading-tight">{tabletName}</h1>
+                    {tabletLocation && (
+                      <p className="text-[11px] text-slate-400 truncate">{tabletLocation}</p>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <h1 className="text-base sm:text-lg font-bold text-white truncate">School Attendance</h1>
+                    <p className="text-[10px] text-slate-500 hidden sm:block">FK biometric · real-time</p>
+                  </>
+                )}
+              </div>
+
+              {/* Right — connection status + reconnect */}
+              <div className="flex items-center gap-2 shrink-0 w-auto">
                 <AutoConnectBadge status={connectStatus} attempt={connectAttempt} />
                 <button onClick={() => { if (autoConnectRef.current) clearTimeout(autoConnectRef.current); attemptConnect(0); }}
                   disabled={connectStatus === "connecting"}
