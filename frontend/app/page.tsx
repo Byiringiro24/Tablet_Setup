@@ -445,7 +445,7 @@ export default function SmartAttendanceDashboard() {
     setBusy(true);
     try {
       const res = await deviceApi.pushStudents();
-      toast.success(`Pushed ${(res.data as any)?.pushed_count ?? "?"} students`);
+      toast.success(`Pushed ${(res.data as any)?.pushed ?? (res.data as any)?.pushed_count ?? "?"} students`);
     } catch (e: any) { toast.error(e?.message || "Failed"); }
     finally { setBusy(false); }
   }

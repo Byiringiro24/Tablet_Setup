@@ -607,15 +607,16 @@ let tabletInfo = { name: null, location: null };
 async function fetchTabletInfo() {
   if (!TABLET_UUID || !SERVER_API_URL) return;
   try {
-    const res = await fetch(${SERVER_API_URL}/tablets?uuid=&limit=1, {
+    const res = await fetch(`${SERVER_API_URL}/api/v1/tablet-bridge/tablet-info/${TABLET_UUID}`, {
       headers: { 'Content-Type': 'application/json' },
     });
     if (!res.ok) return;
     const json = await res.json();
-    const data = json?.data?.[0] ?? json?.[0] ?? null;
-    if (data) {
+    // Public tablet-info endpoint returns { name, location, uuid } directly
+    const data = json?.data ?? json ?? null;
+    if (data && data.name) {
       tabletInfo = { name: data.name || null, location: data.location || null };
-      console.log([Tablet] Identity loaded: "" @ );
+      console.log(`[Tablet] Identity loaded: "${data.name}" @ ${data.location}`);
     }
   } catch (err) {
     console.warn('[Tablet] Could not fetch tablet info from server:', err.message);
@@ -643,7 +644,6 @@ app.get('/api/health', async (req, res) => {
       dns: WG_DNS,
     },
   });
-});
 });
 
 // Server-Sent Events â€” frontend subscribes here for real-time attendance updates
@@ -952,7 +952,8 @@ const WG_DNS = process.env.WG_DNS || '1.1.1.1';
 
 // Tablet identity â€” set TABLET_UUID in .env after registering in the portal.
 // The school server uses this to identify which tablet is making requests.
-
+const TABLET_UUID = process.env.TABLET_UUID || null;
+let DEV_PASSWORD = process.env.DEV_PASSWORD || 'admin1234';
 
 const WG_EXE = 'C:\\Program Files\\WireGuard\\wg.exe';
 // Detect the actual active WireGuard tunnel name dynamically — don't hardcode
