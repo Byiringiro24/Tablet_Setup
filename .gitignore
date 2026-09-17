@@ -23,8 +23,13 @@ DLLs/
 .DS_Store
 Thumbs.db
 
-# Data (runtime generated)
+# Data (runtime generated) — these files are local to each tablet
+# git pull will NEVER overwrite them
 backend/data/attendance.json
+backend/data/attendance-settings.json
+backend/data/device-config.json
+backend/data/students.json
+backend/data/wireguard-public.key
 
 # WireGuard private keys — NEVER commit these
 backend/data/wireguard-private.key
