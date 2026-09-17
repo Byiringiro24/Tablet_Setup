@@ -601,13 +601,17 @@ async function refreshUsersCache() {
   return result.success ? { ...result, data: { users: usersCache, count: usersCache.length } } : result;
 }
 
+// Server base URL — set TABLET_UUID and SERVER_API_URL in .env after registering in the portal.
+// SERVER_API_URL must include /api/v1 (e.g. https://backend.ecareafrica.net/api/v1)
+const SERVER_API_URL = process.env.SERVER_API_URL || 'https://backend.ecareafrica.net/api/v1';
+
 // Tablet identity — cached from school server
 let tabletInfo = { name: null, location: null };
 
 async function fetchTabletInfo() {
   if (!TABLET_UUID || !SERVER_API_URL) return;
   try {
-    const res = await fetch(`${SERVER_API_URL}/api/v1/tablet-bridge/tablet-info/${TABLET_UUID}`, {
+    const res = await fetch(`${SERVER_API_URL}/tablet-bridge/tablet-info/${TABLET_UUID}`, {
       headers: { 'Content-Type': 'application/json' },
     });
     if (!res.ok) return;
@@ -1466,7 +1470,6 @@ app.post('/api/wireguard/ping', async (req, res) => {
 // All relay endpoints require ?token= or Authorization header.
 // ============================================================
 
-const SERVER_API_URL = process.env.SERVER_API_URL || 'https://backend.ecareafrica.net/api/v1';
 
 // In-memory token store (one token per tablet session)
 let schoolAuthToken = null;

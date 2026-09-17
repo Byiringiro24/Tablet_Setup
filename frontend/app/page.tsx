@@ -1105,11 +1105,15 @@ export default function SmartAttendanceDashboard() {
                   <label className="mb-1.5 block text-sm text-slate-400">Device ID</label>
                   <input type="text" value={devForm.deviceId} onChange={e => setDevForm({...devForm, deviceId: e.target.value})} className="form-field" />
                 </div>
-                <div>
-                  <label className="mb-1.5 block text-sm text-slate-400">Location</label>
-                  <input type="text" value={devForm.location} onChange={e => setDevForm({...devForm, location: e.target.value})} className="form-field" />
-                </div>
               </div>
+              {/* Location is read-only — fetched automatically from the school server registry */}
+              {tabletLocation && (
+                <div className="rounded-xl border border-slate-700 bg-slate-800/40 px-4 py-3 flex items-center gap-3">
+                  <div className="text-xs text-slate-500 shrink-0">Location</div>
+                  <div className="text-sm text-slate-300 font-medium">{tabletLocation}</div>
+                  <div className="ml-auto text-[10px] text-slate-600 italic">from server registry</div>
+                </div>
+              )}
               {connected && device && (
                 <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-4">
                   <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Live Device Info</p>
