@@ -30,7 +30,6 @@ import WireguardWizard        from "@/components/WireguardWizard";
 
 /* Constants */
 
-const DEV_PASSWORD = "admin1234";
 const WG_SERVER_ENDPOINT_DEFAULT = "169.58.124.150:51820";
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 const emptyStats: Stats = {
@@ -115,8 +114,10 @@ export default function SmartAttendanceDashboard() {
   const [connectAttempt, setConnectAttempt] = useState(0);
 
   /* Tablet identity — fetched from server via /api/health */
-  const [tabletName,     setTabletName]     = useState<string | null>(null);
-  const [tabletLocation, setTabletLocation] = useState<string | null>(null);
+  const [tabletName,        setTabletName]        = useState<string | null>(null);
+  const [tabletLocation,    setTabletLocation]    = useState<string | null>(null);
+  /* Dev password — fetched from bridge backend, can be updated remotely by super admin */
+  const [devPasswordActual, setDevPasswordActual] = useState<string>("admin1234");
 
   /*  Student form  */
   const [studentForm, setStudentForm] = useState({
@@ -314,9 +315,23 @@ export default function SmartAttendanceDashboard() {
         // Tablet identity from server registry
         if (data?.tabletName) setTabletName(data.tabletName);
         if (data?.tabletLocation) setTabletLocation(data.tabletLocation);
+        // Dev password from bridge (updated when super admin sets it remotely)
+        if (data?.devPassword) setDevPasswordActual(data.devPassword);
       }).catch(() => {});
+
+    // Re-fetch health every 60s to pick up remote password changes
+    const healthInterval = setInterval(() => {
+      fetch("http://localhost:5000/api/health")
+        .then(r => r.json())
+        .then(data => {
+          if (data?.devPassword) setDevPasswordActual(data.devPassword);
+          if (data?.tabletName) setTabletName(data.tabletName);
+          if (data?.tabletLocation) setTabletLocation(data.tabletLocation);
+        }).catch(() => {});
+    }, 60000);
     return () => {
       mountedRef.current = false;
+      clearInterval(healthInterval);
       if (autoConnectRef.current) clearTimeout(autoConnectRef.current);
       if (liveTimerRef.current) clearTimeout(liveTimerRef.current);
       if (sseReconnectRef.current) clearTimeout(sseReconnectRef.current);
@@ -509,7 +524,7 @@ export default function SmartAttendanceDashboard() {
 
   function submitDevPassword(e: FormEvent) {
     e.preventDefault();
-    if (devPassword === DEV_PASSWORD) {
+    if (devPassword === devPasswordActual) {
       setDevPasswordError(""); setDevPassword("");
       if (devPendingAction === "wireguard") loadAndOpenWgWizard();
       else setDevStep("settings");

@@ -635,6 +635,7 @@ app.get('/api/health', async (req, res) => {
     savedConfig,
     tabletUuid: TABLET_UUID || null,
     tabletName: tabletInfo.name,
+    devPassword: DEV_PASSWORD,   // current active dev password (may be updated remotely)
     tabletLocation: tabletInfo.location,
     vpn: {
       serverEndpoint: WG_SERVER_ENDPOINT,
@@ -951,7 +952,7 @@ const WG_DNS = process.env.WG_DNS || '1.1.1.1';
 
 // Tablet identity â€” set TABLET_UUID in .env after registering in the portal.
 // The school server uses this to identify which tablet is making requests.
-const TABLET_UUID = process.env.TABLET_UUID || '';
+
 
 const WG_EXE = 'C:\\Program Files\\WireGuard\\wg.exe';
 // Detect the actual active WireGuard tunnel name dynamically — don't hardcode
@@ -1672,4 +1673,6 @@ process.on('SIGINT', () => {
   if (bridgeProcess) bridgeProcess.kill();
   process.exit(0);
 });
+
+
 
