@@ -1,9 +1,20 @@
-﻿ const express = require('express');
+ const express = require('express');
 const cors = require('cors');
 const { spawn, execFile } = require('child_process');
 const path = require('path');
 const readline = require('readline');
 const fs = require('fs');
+
+// Load .env file — must be before any process.env references
+require('dotenv').config({ path: path.join(__dirname, '.env') });
+
+// ── Environment constants — declared early so all functions can use them ──────
+const TABLET_UUID    = process.env.TABLET_UUID    || '';
+const DEV_PASSWORD   = process.env.DEV_PASSWORD   || 'admin1234';
+const SERVER_API_URL = process.env.SERVER_API_URL  || 'https://backend.ecareafrica.net/api/v1';
+const VPN_ALLOWED_IPS    = process.env.VPN_ALLOWED_IPS    || '10.0.0.0/16';
+const WG_SERVER_ENDPOINT = process.env.WG_SERVER_ENDPOINT || '169.58.124.150:51820';
+const WG_DNS             = process.env.WG_DNS             || '1.1.1.1';
 const fsSync = fs;  // alias used in WireGuard routes for clarity
 const app = express();
 
@@ -607,7 +618,7 @@ let tabletInfo = { name: null, location: null };
 async function fetchTabletInfo() {
   if (!TABLET_UUID || !SERVER_API_URL) return;
   try {
-    const res = await fetch(${SERVER_API_URL}/tablets?uuid=&limit=1, {
+    const res = await fetch(`${SERVER_API_URL}/tablets?uuid=${TABLET_UUID}&limit=1`, {
       headers: { 'Content-Type': 'application/json' },
     });
     if (!res.ok) return;
@@ -615,7 +626,7 @@ async function fetchTabletInfo() {
     const data = json?.data?.[0] ?? json?.[0] ?? null;
     if (data) {
       tabletInfo = { name: data.name || null, location: data.location || null };
-      console.log([Tablet] Identity loaded: "" @ );
+      console.log(`[Tablet] Identity loaded: "${tabletInfo.name}" @ ${tabletInfo.location}`);
     }
   } catch (err) {
     console.warn('[Tablet] Could not fetch tablet info from server:', err.message);
@@ -643,7 +654,6 @@ app.get('/api/health', async (req, res) => {
       dns: WG_DNS,
     },
   });
-});
 });
 
 // Server-Sent Events â€” frontend subscribes here for real-time attendance updates
@@ -946,9 +956,8 @@ app.get('/api/attendance/today', (req, res) => {
 
 // VPN configuration â€” read from .env to match the school server's subnet.
 // Must match the server's wg0.conf AllowedIPs (default: 10.0.0.0/16 for 65534 tablets).
-const VPN_ALLOWED_IPS = process.env.VPN_ALLOWED_IPS || '10.0.0.0/16';
-const WG_SERVER_ENDPOINT = process.env.WG_SERVER_ENDPOINT || '169.58.124.150:51820';
-const WG_DNS = process.env.WG_DNS || '1.1.1.1';
+// VPN configuration — read from .env
+// (declared at top of file)
 
 // Tablet identity â€” set TABLET_UUID in .env after registering in the portal.
 // The school server uses this to identify which tablet is making requests.
@@ -1465,7 +1474,7 @@ app.post('/api/wireguard/ping', async (req, res) => {
 // All relay endpoints require ?token= or Authorization header.
 // ============================================================
 
-const SERVER_API_URL = process.env.SERVER_API_URL || 'https://backend.ecareafrica.net/api/v1';
+// SERVER_API_URL declared at top of file
 
 // In-memory token store (one token per tablet session)
 let schoolAuthToken = null;
@@ -1673,6 +1682,5 @@ process.on('SIGINT', () => {
   if (bridgeProcess) bridgeProcess.kill();
   process.exit(0);
 });
-
 
 
