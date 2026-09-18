@@ -96,11 +96,11 @@ export default function SmartAttendanceDashboard() {
 
   /*  Device config  */
   const [deviceForm, setDeviceForm] = useState({
-    deviceId:  "DV-KGL-01",
-    ipAddress: "10.23.194.16",
+    deviceId:  "",
+    ipAddress: "",
     port:      5005,
     license:   1261,
-    location:  "Main Gate",
+    location:  "",
   });
   const deviceFormRef = useRef(deviceForm);
   useEffect(() => { deviceFormRef.current = deviceForm; }, [deviceForm]);
@@ -296,39 +296,47 @@ export default function SmartAttendanceDashboard() {
     mountedRef.current = true;
     connectSSE();
     attemptConnect(0);
+
+    const applyServerHealth = (data: any) => {
+      const saved = data?.savedConfig;
+      const serverLocation = data?.tabletLocation || saved?.location || "";
+      const serverName = data?.tabletName || null;
+
+      if (saved) {
+        const cfg = {
+          deviceId:  saved.deviceId  || deviceFormRef.current.deviceId,
+          ipAddress: saved.ipAddress || deviceFormRef.current.ipAddress,
+          port:      saved.port      || deviceFormRef.current.port,
+          license:   saved.license   || deviceFormRef.current.license,
+          location:  serverLocation,
+        };
+        setDeviceForm(cfg);
+        deviceFormRef.current = cfg;
+      }
+
+      if (serverName) setTabletName(serverName);
+      if (serverLocation) {
+        setTabletLocation(serverLocation);
+        setDeviceForm(prev => ({ ...prev, location: serverLocation }));
+        setDevForm(prev => ({ ...prev, location: serverLocation }));
+      }
+
+      if (data?.devPassword) setDevPasswordActual(data.devPassword);
+    };
+
     // Load saved config + tablet identity from backend
     fetch("http://localhost:5000/api/health")
       .then(r => r.json())
-      .then(data => {
-        const saved = data?.savedConfig;
-        if (saved) {
-          const cfg = {
-            deviceId:  saved.deviceId  || deviceFormRef.current.deviceId,
-            ipAddress: saved.ipAddress || deviceFormRef.current.ipAddress,
-            port:      saved.port      || deviceFormRef.current.port,
-            license:   saved.license   || deviceFormRef.current.license,
-            location:  saved.location  || deviceFormRef.current.location,
-          };
-          setDeviceForm(cfg);
-          deviceFormRef.current = cfg;
-        }
-        // Tablet identity from server registry
-        if (data?.tabletName) setTabletName(data.tabletName);
-        if (data?.tabletLocation) setTabletLocation(data.tabletLocation);
-        // Dev password from bridge (updated when super admin sets it remotely)
-        if (data?.devPassword) setDevPasswordActual(data.devPassword);
-      }).catch(() => {});
+      .then(applyServerHealth)
+      .catch(() => {});
 
-    // Re-fetch health every 60s to pick up remote password changes
+    // Re-fetch health every 30s to pick up remote identity/password changes fast
     const healthInterval = setInterval(() => {
       fetch("http://localhost:5000/api/health")
         .then(r => r.json())
-        .then(data => {
-          if (data?.devPassword) setDevPasswordActual(data.devPassword);
-          if (data?.tabletName) setTabletName(data.tabletName);
-          if (data?.tabletLocation) setTabletLocation(data.tabletLocation);
-        }).catch(() => {});
-    }, 60000);
+        .then(applyServerHealth)
+        .catch(() => {});
+    }, 30000);
     return () => {
       mountedRef.current = false;
       clearInterval(healthInterval);
@@ -381,8 +389,8 @@ export default function SmartAttendanceDashboard() {
       if (attempt === 0 || attempt % 5 === 0) {
         toast.error(`Device unreachable - retrying...`, { id: "ac" });
       }
-      // Capped exponential backoff: 3s, 5s, 8s ... max 20s (not 30s  faster recovery)
-      const delay = Math.min(3000 + attempt * 2000, 20000);
+      // Fast recovery loop: reconnect quickly while still backing off safely.
+      const delay = Math.min(1500 + attempt * 1500, 10000);
       autoConnectRef.current = setTimeout(() => attemptConnect(attempt + 1), delay);
     }
   }
@@ -512,14 +520,15 @@ export default function SmartAttendanceDashboard() {
       .then(r => r.json())
       .then(data => {
         const saved = data?.savedConfig;
+        const serverLocation = data?.tabletLocation || saved?.location || "";
         setDevForm({
           deviceId:  saved?.deviceId  || deviceForm.deviceId,
           ipAddress: saved?.ipAddress || deviceForm.ipAddress,
           port:      saved?.port      || deviceForm.port,
           license:   saved?.license   || deviceForm.license,
-          location:  saved?.location  || deviceForm.location,
+          location:  serverLocation,
         });
-      }).catch(() => setDevForm({ ...deviceForm }));
+      }).catch(() => setDevForm({ ...deviceForm, location: tabletLocation || "" }));
     setDevStep("password");
   };
 
@@ -540,7 +549,7 @@ export default function SmartAttendanceDashboard() {
 
   function saveDevSettings(e: FormEvent) {
     e.preventDefault();
-    const cfg = { ...devForm };
+    const cfg = { ...devForm, location: tabletLocation || devForm.location || "" };
     setDeviceForm(cfg); deviceFormRef.current = cfg;
     closeDevModal();
     // Show success immediately - dont block UI waiting for device TCP handshake

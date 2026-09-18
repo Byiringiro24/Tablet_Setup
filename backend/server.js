@@ -249,7 +249,7 @@ function saveDeviceConfig(config) {
   }
 }
 
-function scheduleAutoConnect(delayMs = 5000) {
+function scheduleAutoConnect(delayMs = 2500) {
   if (autoConnectTimer) {
     clearTimeout(autoConnectTimer);
     autoConnectTimer = null;
@@ -648,7 +648,7 @@ async function fetchTabletInfo() {
 // Only poll if a UUID is configured — avoids pointless fetch loops on fresh installs
 if (TABLET_UUID) {
   fetchTabletInfo();
-  setInterval(fetchTabletInfo, 5 * 60 * 1000);
+  setInterval(fetchTabletInfo, 30 * 1000);
 }
 
 // ── Remote dev-password polling ───────────────────────────────────────────────
@@ -677,9 +677,9 @@ async function pollDevPassword() {
   }
 }
 if (TABLET_UUID) {
-  // Initial poll after 10s (give WireGuard time to come up)
-  setTimeout(pollDevPassword, 10000);
-  setInterval(pollDevPassword, 60 * 1000);
+  // Initial poll after 5s (give WireGuard time to come up)
+  setTimeout(pollDevPassword, 5000);
+  setInterval(pollDevPassword, 30 * 1000);
 }
 
 app.get('/api/health', async (req, res) => {
