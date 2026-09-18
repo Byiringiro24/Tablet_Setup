@@ -353,16 +353,20 @@ export default function SmartAttendanceDashboard() {
     setConnectAttempt(attempt);
     setConnectStatus("connecting");
     try {
-      // On first attempt use full connect with params; retries use connect-saved (faster)
+      // On first attempt use full connect with params + saveConfig:true so the bridge
+      // persists the config from the form. Without saveConfig:true the bridge rejects
+      // any IP that differs from the previously saved config (HTTP 400 mismatch).
+      // Retries use connect-saved which is sub-second and never touches the saved file.
       const res = attempt === 0
         ? await deviceApi.connect({
             deviceId:  deviceFormRef.current.deviceId,
             ipAddress: deviceFormRef.current.ipAddress,
             port:      deviceFormRef.current.port,
             license:   deviceFormRef.current.license,
-            timeoutMs: 6000,   // 6s is enough for LAN; saves 2s vs previous 8s
+            timeoutMs: 6000,   // 6s is enough for LAN
+            saveConfig: true,  // always persist on first attempt — avoids IP-mismatch 400
           })
-        : await deviceApi.connectSaved();   // reuses bridge's in-memory config  sub-second
+        : await deviceApi.connectSaved();   // reuses bridge's in-memory config — sub-second
       if (!mountedRef.current) return;
       setDevice(res.data.data);
       setConnected(true);

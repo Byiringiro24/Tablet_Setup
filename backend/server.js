@@ -1,10 +1,24 @@
-﻿ const express = require('express');
+const express = require('express');
 const cors = require('cors');
 const { spawn, execFile } = require('child_process');
 const path = require('path');
 const readline = require('readline');
 const fs = require('fs');
 const fsSync = fs;  // alias used in WireGuard routes for clarity
+
+// ── Environment constants — declared here so every function below can use them ──
+// These were previously declared mid-file, causing Temporal Dead Zone ReferenceErrors.
+const PORT            = Number(process.env.PORT || 5000);
+const SERVER_API_URL  = process.env.SERVER_API_URL || 'https://backend.ecareafrica.net/api/v1';
+const TABLET_UUID     = process.env.TABLET_UUID   || null;
+let   DEV_PASSWORD    = process.env.DEV_PASSWORD  || 'admin1234';
+const VPN_ALLOWED_IPS    = process.env.VPN_ALLOWED_IPS    || '10.0.0.0/16';
+const WG_SERVER_ENDPOINT = process.env.WG_SERVER_ENDPOINT || '169.58.124.150:51820';
+const WG_DNS             = process.env.WG_DNS             || '1.1.1.1';
+const WG_EXE             = 'C:\\Program Files\\WireGuard\\wg.exe';
+const WIREGUARD_TUNNEL_NAME = 'EcareAfrica';
+const WG_TUNNEL_DIR      = `${process.env.PROGRAMDATA || 'C:\\ProgramData'}\\WireGuard`;
+
 const app = express();
 
 app.use(cors());
@@ -601,20 +615,24 @@ async function refreshUsersCache() {
   return result.success ? { ...result, data: { users: usersCache, count: usersCache.length } } : result;
 }
 
-// Server base URL — set TABLET_UUID and SERVER_API_URL in .env after registering in the portal.
-// SERVER_API_URL must include /api/v1 (e.g. https://backend.ecareafrica.net/api/v1)
-const SERVER_API_URL = process.env.SERVER_API_URL || 'https://backend.ecareafrica.net/api/v1';
-
 // Tablet identity — cached from school server
 let tabletInfo = { name: null, location: null };
 
 async function fetchTabletInfo() {
+  // TABLET_UUID is set in .env after the tablet is registered in the portal.
+  // Skip silently if not configured yet — no log spam on fresh installs.
   if (!TABLET_UUID || !SERVER_API_URL) return;
   try {
     const res = await fetch(`${SERVER_API_URL}/tablet-bridge/tablet-info/${TABLET_UUID}`, {
       headers: { 'Content-Type': 'application/json' },
     });
-    if (!res.ok) return;
+    if (!res.ok) {
+      // 404 = UUID not registered yet — expected on first boot, not a real error
+      if (res.status !== 404) {
+        console.warn(`[Tablet] tablet-info fetch failed: HTTP ${res.status}`);
+      }
+      return;
+    }
     const json = await res.json();
     // Public tablet-info endpoint returns { name, location, uuid } directly
     const data = json?.data ?? json ?? null;
@@ -623,11 +641,46 @@ async function fetchTabletInfo() {
       console.log(`[Tablet] Identity loaded: "${data.name}" @ ${data.location}`);
     }
   } catch (err) {
+    // Network errors are normal when WireGuard is not yet connected — suppress
     console.warn('[Tablet] Could not fetch tablet info from server:', err.message);
   }
 }
-fetchTabletInfo();
-setInterval(fetchTabletInfo, 5 * 60 * 1000);
+// Only poll if a UUID is configured — avoids pointless fetch loops on fresh installs
+if (TABLET_UUID) {
+  fetchTabletInfo();
+  setInterval(fetchTabletInfo, 5 * 60 * 1000);
+}
+
+// ── Remote dev-password polling ───────────────────────────────────────────────
+// Super admin sets a dev password on the school server (PATCH /platform/hardware/tablets/:id/dev-password).
+// This bridge polls the school server every 60s and applies the new password immediately.
+// The tablet frontend polls /api/health every 60s and updates its local devPasswordActual state.
+async function pollDevPassword() {
+  if (!TABLET_UUID || !SERVER_API_URL) return;
+  try {
+    const res = await fetch(`${SERVER_API_URL}/tablet-bridge/dev-password/${TABLET_UUID}`, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!res.ok) return; // 404 = tablet not registered, 5xx = server down — ignore both
+    const json = await res.json().catch(() => null);
+    if (!json) return;
+    if (json.hasPassword && json.password && json.password !== DEV_PASSWORD) {
+      DEV_PASSWORD = json.password;
+      console.log('[DevPassword] Remote password applied from school server');
+    } else if (!json.hasPassword && DEV_PASSWORD !== (process.env.DEV_PASSWORD || 'admin1234')) {
+      // Server removed the custom password — revert to env default
+      DEV_PASSWORD = process.env.DEV_PASSWORD || 'admin1234';
+      console.log('[DevPassword] Remote password removed — reverted to default');
+    }
+  } catch {
+    // Network error — WireGuard may not be up yet. Silent.
+  }
+}
+if (TABLET_UUID) {
+  // Initial poll after 10s (give WireGuard time to come up)
+  setTimeout(pollDevPassword, 10000);
+  setInterval(pollDevPassword, 60 * 1000);
+}
 
 app.get('/api/health', async (req, res) => {
   const savedConfig = loadDeviceConfig();
@@ -948,25 +1001,10 @@ app.get('/api/attendance/today', (req, res) => {
 //   4. GET  /api/wireguard/status        â†’ verify tunnel is Active
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-// VPN configuration â€” read from .env to match the school server's subnet.
-// Must match the server's wg0.conf AllowedIPs (default: 10.0.0.0/16 for 65534 tablets).
-const VPN_ALLOWED_IPS = process.env.VPN_ALLOWED_IPS || '10.0.0.0/16';
-const WG_SERVER_ENDPOINT = process.env.WG_SERVER_ENDPOINT || '169.58.124.150:51820';
-const WG_DNS = process.env.WG_DNS || '1.1.1.1';
 
-// Tablet identity â€” set TABLET_UUID in .env after registering in the portal.
-// The school server uses this to identify which tablet is making requests.
-const TABLET_UUID = process.env.TABLET_UUID || null;
-let DEV_PASSWORD = process.env.DEV_PASSWORD || 'admin1234';
-
-const WG_EXE = 'C:\\Program Files\\WireGuard\\wg.exe';
-// Detect the actual active WireGuard tunnel name dynamically — don't hardcode
-const WIREGUARD_TUNNEL_NAME = 'EcareAfrica';
-const WG_TUNNEL_DIR = `${process.env.PROGRAMDATA || 'C:\\ProgramData'}\\WireGuard`;
-
-function runPS(script, timeoutMs = 15000) {
+// Run a PowerShell command and return stdout, rejecting on non-zero exit.
+function runPS(script, timeoutMs = 30000) {
   return new Promise((resolve, reject) => {
-    // Run PowerShell with -NoProfile -NonInteractive so it never hangs waiting for input
     const ps = execFile(
       'powershell.exe',
       ['-NoProfile', '-NonInteractive', '-Command', script],
@@ -1665,7 +1703,6 @@ app.get('/api/school/photo', async (req, res) => {
   }
 });
 
-const PORT = Number(process.env.PORT || 5000);
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`FK Attendance Backend running on http://localhost:${PORT}`);
   startBridge();
