@@ -44,6 +44,40 @@ function Refresh-Path {
     $env:PATH = "$machine;$user;C:\Program Files\nodejs;C:\Program Files\Git\cmd;$env:APPDATA\npm"
 }
 
+function Ensure-DotnetX86Sdk {
+    $knownInstallerNames = @(
+        "dotnet-sdk-10.0.401-win-x86.exe",
+        "dotnet-sdk-10-win-x86.exe",
+        "dotnet-sdk-win-x86.exe",
+        "dotnet8-sdk-x86.exe"
+    )
+
+    foreach ($name in $knownInstallerNames) {
+        $local = Join-Path $env:TEMP $name
+        if (Test-Path $local) {
+            Write-Info "Running local .NET x86 installer: $local"
+            try {
+                $proc = Start-Process -FilePath $local -ArgumentList "/install /quiet /norestart" -Wait -PassThru
+                if ($proc -and ($proc.ExitCode -in 0, 3010)) { return $true }
+            } catch {
+                Write-Warn "Installer returned a problem: $($_.Exception.Message)"
+            }
+        }
+    }
+
+    $sdkDownloadUrl = "https://builds.dotnet.microsoft.com/dotnet/Sdk/10.0.401/dotnet-sdk-10.0.401-win-x86.exe"
+    $sdkInstaller = "$env:TEMP\dotnet-sdk-10.0.401-win-x86.exe"
+    try {
+        Invoke-WebRequest -Uri $sdkDownloadUrl -OutFile $sdkInstaller -UseBasicParsing
+        Start-Process $sdkInstaller -ArgumentList "/install /quiet /norestart" -Wait
+        return $true
+    } catch {
+        Write-Warn "x86 .NET 10 SDK installer download failed: $($_.Exception.Message)"
+    }
+
+    return $false
+}
+
 function Find-Exe($name) {
     # Try PATH first, then common install locations
     $found = (Get-Command $name -ErrorAction SilentlyContinue)?.Source
@@ -92,37 +126,17 @@ if ($nodeExe) {
     }
 }
 
-# ── .NET 8 SDK x86 (needed for FKBridge build) ──
-$dotnetRt = & dotnet --list-runtimes 2>&1 | Where-Object { $_ -match "8\." }
-if ($dotnetRt) {
-    Write-OK ".NET 8 already installed"
-} else {
-    Write-Info "Downloading .NET 8 Desktop Runtime x86..."
-    $dotnetUrl = "https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x86.exe"
-    $dotnetInstaller = "$env:TEMP\dotnet8-x86.exe"
-    try {
-        Invoke-WebRequest -Uri $dotnetUrl -OutFile $dotnetInstaller -UseBasicParsing
-        Start-Process $dotnetInstaller -ArgumentList "/install /quiet /norestart" -Wait
-        Write-OK ".NET 8 Desktop Runtime x86 installed"
-    } catch {
-        Write-Warn ".NET 8 download failed — install from https://dotnet.microsoft.com/download/dotnet/8.0"
-    }
-}
-
-# Also install .NET 8 SDK for building FKBridge
-$dotnetSdk = & dotnet --list-sdks 2>&1 | Where-Object { $_ -match "8\." }
+# ── .NET x86 SDK (needed for FKBridge build; supports 8.x and 10.x) ──
+$dotnetSdk = & dotnet --list-sdks 2>&1 | Where-Object { $_ -match "^(8|10)\." }
 if ($dotnetSdk) {
-    Write-OK ".NET 8 SDK already installed"
+    Write-OK ".NET x86 SDK already installed: $($dotnetSdk | Select-Object -First 1)"
 } else {
-    Write-Info "Downloading .NET 8 SDK x86 (for building FKBridge)..."
-    $sdkUrl = "https://aka.ms/dotnet/8.0/dotnet-sdk-win-x86.exe"
-    $sdkInstaller = "$env:TEMP\dotnet8-sdk-x86.exe"
-    try {
-        Invoke-WebRequest -Uri $sdkUrl -OutFile $sdkInstaller -UseBasicParsing
-        Start-Process $sdkInstaller -ArgumentList "/install /quiet /norestart" -Wait
-        Write-OK ".NET 8 SDK x86 installed"
-    } catch {
-        Write-Warn ".NET 8 SDK download failed — FKBridge build may fail"
+    Write-Info "Downloading .NET x86 SDK 10.0.401 (for building FKBridge)..."
+    $installed = Ensure-DotnetX86Sdk
+    if ($installed) {
+        Write-OK ".NET x86 SDK 10.0.401 installed or repaired"
+    } else {
+        Write-Warn ".NET x86 SDK 10.0.401 could not be installed — FKBridge build may fail"
     }
 }
 
@@ -295,7 +309,7 @@ $buildOut = & $dotnetExe build -c Release 2>&1
 if ($LASTEXITCODE -eq 0) {
     Write-OK "FKBridge.exe built successfully"
 } else {
-    Write-Warn "FKBridge build issues — check .NET 8 x86 SDK is installed"
+    Write-Warn "FKBridge build issues — check .NET x86 SDK (8.x/10.x) is installed"
     $buildOut | Where-Object { $_ -match "error" } | ForEach-Object { Write-Warn $_ }
 }
 Pop-Location
