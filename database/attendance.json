@@ -1,0 +1,122 @@
+﻿[
+  {
+    "id": "ATT-001",
+    "studentId": "RW-422",
+    "studentDeviceId": "311",
+    "deviceUserId": "311",
+    "name": "Eddy",
+    "timestamp": "2026-06-21T07:35:00Z",
+    "method": "Fingerprint",
+    "direction": "In",
+    "status": "Present",
+    "period": "Morning Attendance"
+  },
+  {
+    "id": "ATT-002",
+    "studentId": "RW-531",
+    "studentDeviceId": "100",
+    "deviceUserId": "100",
+    "name": "Fabrice Mbarushimana",
+    "timestamp": "2026-06-21T07:42:00Z",
+    "method": "Face Recognition",
+    "direction": "In",
+    "status": "Present",
+    "period": "Morning Attendance"
+  },
+  {
+    "id": "ATT-003",
+    "studentId": "RW-345",
+    "studentDeviceId": "0001",
+    "deviceUserId": "0001",
+    "name": "Mugabo",
+    "timestamp": "2026-06-21T08:15:00Z",
+    "method": "RFID Card",
+    "direction": "In",
+    "status": "Late",
+    "period": "Morning Attendance"
+  },
+  {
+    "id": "ATT-004",
+    "studentId": "RW-422",
+    "studentDeviceId": "311",
+    "deviceUserId": "311",
+    "name": "Eddy",
+    "timestamp": "2026-06-21T17:05:00Z",
+    "method": "Fingerprint",
+    "direction": "Out",
+    "status": "Leave on time",
+    "period": "Evening Attendance"
+  },
+  {
+    "id": "ATT-005",
+    "studentId": "RW-531",
+    "studentDeviceId": "100",
+    "deviceUserId": "100",
+    "name": "Fabrice Mbarushimana",
+    "timestamp": "2026-06-21T17:15:00Z",
+    "method": "Face Recognition",
+    "direction": "Out",
+    "status": "Leave on time",
+    "period": "Evening Attendance"
+  },
+  {
+    "id": "ATT-006",
+    "studentId": "RW-345",
+    "studentDeviceId": "0001",
+    "deviceUserId": "0001",
+    "name": "Mugabo",
+    "timestamp": "2026-06-21T18:30:00Z",
+    "method": "RFID Card",
+    "direction": "Out",
+    "status": "Leave late",
+    "period": "Evening Attendance"
+  },
+  {
+    "id": "ATT-007",
+    "studentId": "RW-422",
+    "studentDeviceId": "311",
+    "deviceUserId": "311",
+    "name": "Eddy",
+    "timestamp": "2026-06-20T07:40:00Z",
+    "method": "Fingerprint",
+    "direction": "In",
+    "status": "Present",
+    "period": "Morning Attendance"
+  },
+  {
+    "id": "ATT-008",
+    "studentId": "RW-531",
+    "studentDeviceId": "100",
+    "deviceUserId": "100",
+    "name": "Fabrice Mbarushimana",
+    "timestamp": "2026-06-20T07:50:00Z",
+    "method": "Face Recognition",
+    "direction": "In",
+    "status": "Present",
+    "period": "Morning Attendance"
+  },
+  {
+    "id": "ATT-009",
+    "studentId": "RW-422",
+    "studentDeviceId": "311",
+    "deviceUserId": "311",
+    "name": "Eddy",
+    "timestamp": "2026-06-20T17:00:00Z",
+    "method": "Fingerprint",
+    "direction": "Out",
+    "status": "Leave on time",
+    "period": "Evening Attendance"
+  },
+  {
+    "id": "ATT-010",
+    "studentId": "RW-531",
+    "studentDeviceId": "100",
+    "deviceUserId": "100",
+    "name": "Fabrice Mbarushimana",
+    "timestamp": "2026-06-20T17:20:00Z",
+    "method": "Face Recognition",
+    "direction": "Out",
+    "status": "Leave on time",
+    "period": "Evening Attendance"
+  }
+]
