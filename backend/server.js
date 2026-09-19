@@ -19,6 +19,86 @@ const WG_EXE             = 'C:\\Program Files\\WireGuard\\wg.exe';
 const WIREGUARD_TUNNEL_NAME = 'EcareAfrica';
 const WG_TUNNEL_DIR      = `${process.env.PROGRAMDATA || 'C:\\ProgramData'}\\WireGuard`;
 
+async function getWireGuardRuntimeStatus() {
+  const wgExeExists = fsSync.existsSync(WG_EXE);
+  const wguiExists = fsSync.existsSync('C:\\Program Files\\WireGuard\\wireguard.exe');
+  const configPath = path.join(WG_TUNNEL_DIR, `${WIREGUARD_TUNNEL_NAME}.conf`);
+  const configExists = fsSync.existsSync(configPath);
+
+  let commandExists = false;
+  let serviceExists = false;
+  let serviceRunning = false;
+  let adapterExists = false;
+  let adapterUp = false;
+
+  try {
+    const commandOut = await new Promise((resolve) => {
+      execFile('powershell.exe', [
+        '-NoProfile', '-NonInteractive', '-Command',
+        'Get-Command wg -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source'
+      ], { timeout: 6000, windowsHide: true }, (err, stdout) => {
+        resolve(err ? '' : stdout);
+      });
+    });
+    commandExists = Boolean((commandOut || '').trim());
+  } catch { /* ignore */ }
+
+  try {
+    const serviceOut = await new Promise((resolve) => {
+      execFile('powershell.exe', [
+        '-NoProfile', '-NonInteractive', '-Command',
+        'Get-Service WireGuard -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Status'
+      ], { timeout: 6000, windowsHide: true }, (err, stdout) => {
+        resolve(err ? '' : stdout);
+      });
+    });
+    const normalized = (serviceOut || '').toString().trim().toLowerCase();
+    serviceExists = Boolean(normalized);
+    serviceRunning = normalized.includes('running');
+  } catch { /* ignore */ }
+
+  try {
+    const adapterOut = await new Promise((resolve) => {
+      execFile('powershell.exe', [
+        '-NoProfile', '-NonInteractive', '-Command',
+        'Get-NetAdapter | Where-Object { $_.InterfaceDescription -like "*WireGuard*" -or $_.InterfaceAlias -like "*WireGuard*" } | Select-Object -ExpandProperty Status'
+      ], { timeout: 6000, windowsHide: true }, (err, stdout) => {
+        resolve(err ? '' : stdout);
+      });
+    });
+    const statuses = (adapterOut || '')
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    adapterExists = statuses.length > 0;
+    adapterUp = statuses.some((status) => status.toLowerCase().includes('up'));
+  } catch { /* ignore */ }
+
+  const installed = wgExeExists || wguiExists || commandExists || configExists;
+  const tunnelActive = serviceRunning || adapterUp;
+  const reason = !installed
+    ? 'WireGuard is not installed or not detected on this machine.'
+    : serviceRunning || adapterUp
+      ? 'WireGuard is installed and active.'
+      : 'WireGuard is installed but the tunnel/service is not active yet.';
+
+  return {
+    installed,
+    commandExists,
+    serviceExists,
+    serviceRunning,
+    adapterExists,
+    adapterUp,
+    configExists,
+    tunnelActive,
+    reason,
+    wgExeExists,
+    wguiExists,
+    configPath,
+  };
+}
+
 const app = express();
 
 app.use(cors());
@@ -1127,11 +1207,13 @@ app.get('/api/wireguard/status', async (req, res) => {
 // Returns: { privateKey, publicKey }
 // The super admin copies the publicKey and pastes it into the server web UI.
 app.post('/api/wireguard/generate-keys', async (req, res) => {
-  if (!fsSync.existsSync(WG_EXE)) {
+  const wireguardStatus = await getWireGuardRuntimeStatus();
+  if (!wireguardStatus.installed && !wireguardStatus.configExists) {
     return res.status(400).json({
       success: false,
       error: 'WireGuard is not installed. Download from https://www.wireguard.com/install/ and install it first.',
       downloadUrl: 'https://www.wireguard.com/install/',
+      status: wireguardStatus,
     });
   }
 
@@ -1185,11 +1267,13 @@ app.post('/api/wireguard/install', async (req, res) => {
   if (!serverEndpoint)  return res.status(400).json({ success: false, error: 'serverEndpoint is required (e.g. 169.58.124.150:51820)' });
   if (!vpnIp)           return res.status(400).json({ success: false, error: 'vpnIp is required (e.g. 10.0.0.2)' });
 
-  if (!fsSync.existsSync(WG_EXE)) {
+  const wireguardStatus = await getWireGuardRuntimeStatus();
+  if (!wireguardStatus.installed && !wireguardStatus.configExists) {
     return res.status(400).json({
       success: false,
       error: 'WireGuard is not installed.',
       downloadUrl: 'https://www.wireguard.com/install/',
+      status: wireguardStatus,
     });
   }
 
