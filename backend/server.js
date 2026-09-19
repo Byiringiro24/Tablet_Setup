@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const cors = require('cors');
 const { spawn, execFile } = require('child_process');
 const path = require('path');
@@ -6,7 +6,7 @@ const readline = require('readline');
 const fs = require('fs');
 const fsSync = fs;  // alias used in WireGuard routes for clarity
 
-// ── Environment constants — declared here so every function below can use them ──
+// ΓöÇΓöÇ Environment constants ΓÇö declared here so every function below can use them ΓöÇΓöÇ
 // These were previously declared mid-file, causing Temporal Dead Zone ReferenceErrors.
 const PORT            = Number(process.env.PORT || 5000);
 const SERVER_API_URL  = process.env.SERVER_API_URL || 'https://backend.ecareafrica.net/api/v1';
@@ -154,7 +154,7 @@ async function fakeBridgeHandler(command, timeoutMs = 30000) {
   return { success: true, data: {} };
 }
 
-// SSE clients â€” set of response objects
+// SSE clients ├óΓé¼ΓÇ¥ set of response objects
 const sseClients = new Set();
 
 function sseEmit(event, data) {
@@ -194,7 +194,7 @@ async function runLogPoll() {
       // If command failed with a connection-type error, device is offline
       const err = (result.error || '').toLowerCase();
       if (err.includes('not reachable') || err.includes('disconnect') || err.includes('timeout') || err.includes('bridge stopped')) {
-        console.log('Log poll: device offline detected â€” triggering reconnect');
+        console.log('Log poll: device offline detected ├óΓé¼ΓÇ¥ triggering reconnect');
         currentDevice = null;
         stopLogPoll();
         sseEmit('deviceStatus', { connected: false });
@@ -204,7 +204,7 @@ async function runLogPoll() {
     }
     const rawLogs = Array.isArray(result.data?.logs) ? result.data.logs : [];
 
-    // On first poll after connect, seed ALL existing logs â€” never flash old attendance
+    // On first poll after connect, seed ALL existing logs ├óΓé¼ΓÇ¥ never flash old attendance
     if (seenLogIds.size === 0 && rawLogs.length > 0) {
       const getLogKey = (raw) => raw.id || `${raw.userId}-${raw.timestamp}`;
       rawLogs.forEach((raw) => seenLogIds.add(getLogKey(raw)));
@@ -212,7 +212,7 @@ async function runLogPoll() {
       // Pull users then emit init with resolved names for sidebar
       await refreshUsersCache().catch(() => null);
       sseEmit('init', rawLogs.map(attendanceFromLog));
-      console.log(`Log poll: seeded ${rawLogs.length} existing log(s) â€” no flash`);
+      console.log(`Log poll: seeded ${rawLogs.length} existing log(s) ├óΓé¼ΓÇ¥ no flash`);
       pollBusy = false;
       return;
     }
@@ -235,7 +235,7 @@ async function runLogPoll() {
       sseEmit('attendance', freshMapped);
     }
   } catch (err) {
-    // silent â€” device may be briefly busy
+    // silent ├óΓé¼ΓÇ¥ device may be briefly busy
   }
   pollBusy = false;
 }
@@ -329,6 +329,59 @@ function saveDeviceConfig(config) {
   }
 }
 
+function rememberLatestDeviceIp(ipAddress, port = 5005, extra = {}) {
+  if (!ipAddress || !String(ipAddress).trim()) return null;
+
+  const previous = activeDeviceConfig || loadDeviceConfig() || {};
+  const nextConfig = {
+    ...previous,
+    ...extra,
+    ipAddress: String(ipAddress).trim(),
+    port: Number(port) || 5005,
+  };
+
+  if (!nextConfig.deviceId && previous.deviceId) nextConfig.deviceId = previous.deviceId;
+  activeDeviceConfig = nextConfig;
+  saveDeviceConfig(nextConfig);
+  return nextConfig;
+}
+
+function ensureWireGuardConfigFile({ privateKey, serverPublicKey, vpnIp = '10.0.0.2', dns = WG_DNS, serverEndpoint = WG_SERVER_ENDPOINT, allowedIPs = VPN_ALLOWED_IPS } = {}) {
+  if (!privateKey || !serverPublicKey) {
+    throw new Error('Private key and server public key are required to build the WireGuard config.');
+  }
+
+  if (!fsSync.existsSync(WG_TUNNEL_DIR)) fsSync.mkdirSync(WG_TUNNEL_DIR, { recursive: true });
+
+  const confContent = [
+    '[Interface]',
+    `PrivateKey = ${privateKey}`,
+    `Address = ${vpnIp}/24`,
+    `DNS = ${dns}`,
+    '',
+    '[Peer]',
+    `PublicKey = ${serverPublicKey}`,
+    `AllowedIPs = ${allowedIPs}`,
+    `Endpoint = ${serverEndpoint}`,
+    'PersistentKeepalive = 25',
+  ].join('\n');
+
+  const confPath = path.join(WG_TUNNEL_DIR, `${WIREGUARD_TUNNEL_NAME}.conf`);
+  const tempConfPath = path.join(process.env.TEMP || 'C:\\Temp', `${WIREGUARD_TUNNEL_NAME}.conf`);
+
+  if (!fsSync.existsSync(confPath) || !fsSync.readFileSync(confPath, 'utf8').includes('PublicKey = ')) {
+    fsSync.writeFileSync(confPath, Buffer.from(confContent, 'utf8'));
+  }
+
+  try {
+    fsSync.writeFileSync(tempConfPath, Buffer.from(confContent, 'utf8'));
+  } catch {
+    // Non-fatal fallback when TEMP is unavailable.
+  }
+
+  return { confPath, tempConfPath, confContent };
+}
+
 function scheduleAutoConnect(delayMs = 2500) {
   if (autoConnectTimer) {
     clearTimeout(autoConnectTimer);
@@ -345,7 +398,7 @@ async function runAutoConnect() {
   if (!autoConnectEnabled) return;
   if (currentDevice && currentDevice.connected) return;
 
-  // Use the in-memory cached config â€” never re-read from file during auto-connect
+  // Use the in-memory cached config ├óΓé¼ΓÇ¥ never re-read from file during auto-connect
   // (file can be overwritten by stale browser requests; memory is authoritative)
   if (!activeDeviceConfig || !activeDeviceConfig.ipAddress) {
     console.log('Auto-connect: no device config in memory, retrying in 10s...');
@@ -361,11 +414,11 @@ async function runAutoConnect() {
 
   try {
     await ensureBridge();
-    // Stop log poll before connecting â€” prevents queue contention
+    // Stop log poll before connecting ├óΓé¼ΓÇ¥ prevents queue contention
     stopLogPoll();
     const { ipAddress, port = 5005, license = 1261, deviceId = '', netPassword = 0, protocolType = -1 } = config;
     const normalizedProtocol = protocolType === null || protocolType === undefined ? -1 : Number(protocolType);
-    // Use timeout from saved config â€” longer timeout needed for first connect
+    // Use timeout from saved config ├óΓé¼ΓÇ¥ longer timeout needed for first connect
     const normalizedTimeout = Number(config.timeoutMs) > 0 ? Number(config.timeoutMs) : 15000;
     const result = await sendCommand(
       `CONNECT|${ipAddress}|${Number(port)}|${Number(license)}|${deviceId}|${Number(netPassword)}|${normalizedProtocol}|${normalizedTimeout}`,
@@ -378,11 +431,11 @@ async function runAutoConnect() {
       syncTimeAfterConnect();                                    // sync device clock to tablet time
       refreshUsersCache().catch(() => null); // pull users so names resolve immediately
       startLogPoll();
-      // Check connection health every 30s (not 15s â€” gives log poll room to breathe)
+      // Check connection health every 30s (not 15s ├óΓé¼ΓÇ¥ gives log poll room to breathe)
       scheduleAutoConnect(30000);
     } else {
       console.log(`Auto-connect failed (attempt #${attempt}): ${result.error || 'unknown error'}`);
-      // Retry with capped backoff: 3s, 4.5s, 6.7s, â€¦ 30s max
+      // Retry with capped backoff: 3s, 4.5s, 6.7s, ├óΓé¼┬ª 30s max
       const delay = Math.min(3000 * Math.pow(1.5, Math.min(attempt - 1, 6)), 30000);
       scheduleAutoConnect(delay);
     }
@@ -426,7 +479,7 @@ function startBridge() {
   if (bridgeProcess) return;
   if (!fs.existsSync(bridgePath)) {
     console.warn('FKBridge.exe not found at:', bridgePath);
-    console.warn('Bridge features disabled â€” WireGuard VPN setup endpoints are still available.');
+    console.warn('Bridge features disabled ├óΓé¼ΓÇ¥ WireGuard VPN setup endpoints are still available.');
     return;
   }
   console.log('Starting FK bridge:', bridgePath);
@@ -462,7 +515,7 @@ function startBridge() {
     bridgeReady = false;
     currentDevice = null;
     stopLogPoll();
-    // Bridge died â€” schedule auto-reconnect after a short delay
+    // Bridge died ├óΓé¼ΓÇ¥ schedule auto-reconnect after a short delay
     if (autoConnectEnabled) scheduleAutoConnect(5000);
   });
 }
@@ -478,7 +531,7 @@ async function ensureBridge() {
   if (!bridgeReady) throw new Error('FK bridge did not start. Build FKBridge first and confirm FKBridge.exe exists.');
 }
 
-// Command lock â€” only one bridge command runs at a time
+// Command lock ├óΓé¼ΓÇ¥ only one bridge command runs at a time
 let commandLock = false;
 const commandQueue = [];
 
@@ -495,7 +548,7 @@ async function sendCommand(command, timeoutMs = 30000) {
 async function drainCommandQueue() {
   if (commandLock || commandQueue.length === 0) return;
   commandLock = true;
-  // Prioritise CONNECT commands â€” if one is waiting, drop all GET_LOGS in front of it
+  // Prioritise CONNECT commands ├óΓé¼ΓÇ¥ if one is waiting, drop all GET_LOGS in front of it
   const connectIdx = commandQueue.findIndex(({ command }) => command.startsWith('CONNECT'));
   if (connectIdx > 0) {
     // Remove all non-CONNECT commands ahead of it to avoid blocking connect
@@ -601,7 +654,7 @@ function normalizeStudent(input) {
     parentPhone: input.parentPhone || '',
     phone: input.phone || '',
     email: input.email || '',
-    photoUrl: input.photoUrl || input.photo_url || '',   // â† stored for display on scan
+    photoUrl: input.photoUrl || input.photo_url || '',   // ├óΓÇá┬É stored for display on scan
     createdAt: input.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -695,19 +748,19 @@ async function refreshUsersCache() {
   return result.success ? { ...result, data: { users: usersCache, count: usersCache.length } } : result;
 }
 
-// Tablet identity — cached from school server
+// Tablet identity ΓÇö cached from school server
 let tabletInfo = { name: null, location: null };
 
 async function fetchTabletInfo() {
   // TABLET_UUID is set in .env after the tablet is registered in the portal.
-  // Skip silently if not configured yet — no log spam on fresh installs.
+  // Skip silently if not configured yet ΓÇö no log spam on fresh installs.
   if (!TABLET_UUID || !SERVER_API_URL) return;
   try {
     const res = await fetch(`${SERVER_API_URL}/tablet-bridge/tablet-info/${TABLET_UUID}`, {
       headers: { 'Content-Type': 'application/json' },
     });
     if (!res.ok) {
-      // 404 = UUID not registered yet — expected on first boot, not a real error
+      // 404 = UUID not registered yet ΓÇö expected on first boot, not a real error
       if (res.status !== 404) {
         console.warn(`[Tablet] tablet-info fetch failed: HTTP ${res.status}`);
       }
@@ -721,17 +774,17 @@ async function fetchTabletInfo() {
       console.log(`[Tablet] Identity loaded: "${data.name}" @ ${data.location}`);
     }
   } catch (err) {
-    // Network errors are normal when WireGuard is not yet connected — suppress
+    // Network errors are normal when WireGuard is not yet connected ΓÇö suppress
     console.warn('[Tablet] Could not fetch tablet info from server:', err.message);
   }
 }
-// Only poll if a UUID is configured — avoids pointless fetch loops on fresh installs
+// Only poll if a UUID is configured ΓÇö avoids pointless fetch loops on fresh installs
 if (TABLET_UUID) {
   fetchTabletInfo();
   setInterval(fetchTabletInfo, 30 * 1000);
 }
 
-// ── Remote dev-password polling ───────────────────────────────────────────────
+// ΓöÇΓöÇ Remote dev-password polling ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // Super admin sets a dev password on the school server (PATCH /platform/hardware/tablets/:id/dev-password).
 // This bridge polls the school server every 60s and applies the new password immediately.
 // The tablet frontend polls /api/health every 60s and updates its local devPasswordActual state.
@@ -741,19 +794,19 @@ async function pollDevPassword() {
     const res = await fetch(`${SERVER_API_URL}/tablet-bridge/dev-password/${TABLET_UUID}`, {
       headers: { 'Content-Type': 'application/json' },
     });
-    if (!res.ok) return; // 404 = tablet not registered, 5xx = server down — ignore both
+    if (!res.ok) return; // 404 = tablet not registered, 5xx = server down ΓÇö ignore both
     const json = await res.json().catch(() => null);
     if (!json) return;
     if (json.hasPassword && json.password && json.password !== DEV_PASSWORD) {
       DEV_PASSWORD = json.password;
       console.log('[DevPassword] Remote password applied from school server');
     } else if (!json.hasPassword && DEV_PASSWORD !== (process.env.DEV_PASSWORD || 'admin1234')) {
-      // Server removed the custom password — revert to env default
+      // Server removed the custom password ΓÇö revert to env default
       DEV_PASSWORD = process.env.DEV_PASSWORD || 'admin1234';
-      console.log('[DevPassword] Remote password removed — reverted to default');
+      console.log('[DevPassword] Remote password removed ΓÇö reverted to default');
     }
   } catch {
-    // Network error — WireGuard may not be up yet. Silent.
+    // Network error ΓÇö WireGuard may not be up yet. Silent.
   }
 }
 if (TABLET_UUID) {
@@ -783,7 +836,7 @@ app.get('/api/health', async (req, res) => {
   });
 });
 
-// Server-Sent Events â€” frontend subscribes here for real-time attendance updates
+// Server-Sent Events ├óΓé¼ΓÇ¥ frontend subscribes here for real-time attendance updates
 app.get('/api/events', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -796,7 +849,7 @@ app.get('/api/events', (req, res) => {
     try { res.write(': heartbeat\n\n'); } catch { /* client gone */ }
   }, 20000);
 
-  // Send current log cache immediately on connect â€” seed seenLogIds so they're never treated as fresh
+  // Send current log cache immediately on connect ├óΓé¼ΓÇ¥ seed seenLogIds so they're never treated as fresh
   const current = logsCache.map(attendanceFromLog);
   current.forEach((l) => seenLogIds.add(l.id));
   // Send to frontend as init (sidebar logs only, no flash)
@@ -825,17 +878,21 @@ app.post('/api/device/connect', async (req, res) => {
   const normalizedProtocol = protocolType === null || protocolType === undefined ? -1 : Number(protocolType);
   const normalizedTimeout = Number(timeoutMs) > 0 ? Number(timeoutMs) : 3000;
 
-  // Only persist the config when saveConfig=true (sent only by the Developer modal)
-  if (saveConfig === true) {
-    const cfg = { ipAddress: targetAddress, port: Number(port), license: Number(license), deviceId, netPassword: Number(netPassword), protocolType: normalizedProtocol, timeoutMs: normalizedTimeout };
-    saveDeviceConfig(cfg);
-    activeDeviceConfig = cfg;  // update in-memory so auto-connect uses new IP immediately
-  } else {
-    // If there is already a saved config with a different IP, ignore the caller's IP and use the saved one
-    const existing = loadDeviceConfig();
-    if (existing && existing.ipAddress && existing.ipAddress !== targetAddress) {
-      // Silently reject â€” don't log spam from stale browser requests
-      return res.status(400).json({ success: false, error: `Device IP mismatch. Saved IP is ${existing.ipAddress}. Open Developer settings to update it.` });
+  // Always keep the latest IP in the saved config when the FK device address changes.
+  if (saveConfig === true || targetAddress) {
+    const cfg = {
+      ...(activeDeviceConfig || loadDeviceConfig() || {}),
+      ipAddress: String(targetAddress || '').trim(),
+      port: Number(port) || 5005,
+      license: Number(license) || 1261,
+      deviceId: String(deviceId || '').trim(),
+      netPassword: Number(netPassword) || 0,
+      protocolType: normalizedProtocol,
+      timeoutMs: normalizedTimeout,
+    };
+    if (cfg.ipAddress) {
+      saveDeviceConfig(cfg);
+      activeDeviceConfig = cfg;  // keep the latest FK device IP immediately available for reconnects
     }
   }
 
@@ -845,6 +902,15 @@ app.post('/api/device/connect', async (req, res) => {
   );
   if (result.success) {
     currentDevice = result.data;
+    if (result.data?.ipAddress) {
+      rememberLatestDeviceIp(result.data.ipAddress, result.data.port || config.port || 5005, {
+        deviceId: result.data.deviceId || config.deviceId || '',
+        license: result.data.license || config.license || 1261,
+        netPassword: result.data.netPassword || config.netPassword || 0,
+        protocolType: result.data.protocolType ?? config.protocolType ?? -1,
+        timeoutMs: result.data.timeoutMs || config.timeoutMs || 15000,
+      });
+    }
     autoConnectAttempt = 0;
     syncTimeAfterConnect();                  // sync device clock to tablet time
     refreshUsersCache().catch(() => null);
@@ -854,9 +920,9 @@ app.post('/api/device/connect', async (req, res) => {
   apiResult(res, result);
 });
 
-// Connect using saved config â€” frontend calls this so it never overwrites the saved IP
+// Connect using saved config ├óΓé¼ΓÇ¥ frontend calls this so it never overwrites the saved IP
 app.post('/api/device/connect-saved', async (req, res) => {
-  // If already connected, return current device state immediately â€” no need to reconnect
+  // If already connected, return current device state immediately ├óΓé¼ΓÇ¥ no need to reconnect
   if (currentDevice && currentDevice.connected) {
     return res.json({ success: true, data: currentDevice });
   }
@@ -904,7 +970,7 @@ app.get('/api/device/status', async (req, res) => {
   if (result.success) {
     currentDevice = result.data;
   } else {
-    // STATUS failed â€” device is offline, clear it so frontend shows disconnected
+    // STATUS failed ├óΓé¼ΓÇ¥ device is offline, clear it so frontend shows disconnected
     currentDevice = null;
     stopLogPoll();
     if (autoConnectEnabled) scheduleAutoConnect(3000);
@@ -1069,17 +1135,17 @@ app.get('/api/attendance/today', (req, res) => {
   res.json({ success: true, summary: { total: todayLogs.length, checkIns: todayLogs.length, uniqueStudents: new Set(todayLogs.map((log) => log.studentDeviceId)).size } });
 });
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼
 // WireGuard VPN Setup Endpoints
 // These run PowerShell on the Windows tablet so the super admin can set up
 // the VPN tunnel from a web browser without touching a terminal.
 //
 // Flow:
-//   1. GET  /api/wireguard/status       â†’ check if WireGuard is installed & tunnel state
-//   2. POST /api/wireguard/generate-keys â†’ generate a new private+public key pair
-//   3. POST /api/wireguard/install       â†’ write the tunnel config and activate it
-//   4. GET  /api/wireguard/status        â†’ verify tunnel is Active
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+//   1. GET  /api/wireguard/status       ├óΓÇáΓÇÖ check if WireGuard is installed & tunnel state
+//   2. POST /api/wireguard/generate-keys ├óΓÇáΓÇÖ generate a new private+public key pair
+//   3. POST /api/wireguard/install       ├óΓÇáΓÇÖ write the tunnel config and activate it
+//   4. GET  /api/wireguard/status        ├óΓÇáΓÇÖ verify tunnel is Active
+// ├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼
 
 
 // Run a PowerShell command and return stdout, rejecting on non-zero exit.
@@ -1109,7 +1175,7 @@ function runWg(...args) {
 // GET /api/wireguard/status
 // Returns: installed, tunnelActive, tunnelName, vpnIp, publicKey (if keys exist)
 app.get('/api/wireguard/status', async (req, res) => {
-  // Check if running as Administrator — WireGuard tunnel service requires it
+  // Check if running as Administrator ΓÇö WireGuard tunnel service requires it
   let isAdmin = false;
   try {
     await runPS('([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]"Administrator")', 5000);
@@ -1132,7 +1198,7 @@ app.get('/api/wireguard/status', async (req, res) => {
   let activeTunnelName = WIREGUARD_TUNNEL_NAME;
 
   if (installed) {
-    // Use netsh to detect WireGuard adapter — fast, no admin needed
+    // Use netsh to detect WireGuard adapter ΓÇö fast, no admin needed
     try {
       const netshOut = await new Promise((resolve) => {
         execFile('netsh', ['interface', 'ipv4', 'show', 'addresses'], { timeout: 5000, windowsHide: true }, (err, stdout) => {
@@ -1145,7 +1211,7 @@ app.get('/api/wireguard/status', async (req, res) => {
           resolve(err ? '' : stdout);
         });
       });
-      // Look for 10.0.x.x address — if present the WireGuard tunnel is up
+      // Look for 10.0.x.x address ΓÇö if present the WireGuard tunnel is up
       const vpnMatch = ipconfigOut.match(/IPv4 Address[.\s]+:\s*(10\.0\.\d+\.\d+)/i);
       if (vpnMatch) {
         tunnelActive = true;
@@ -1224,7 +1290,7 @@ app.post('/api/wireguard/generate-keys', async (req, res) => {
       throw new Error('wg genkey returned an empty or invalid key');
     }
 
-    // Step 2: derive public key â€” pipe private key to `wg pubkey` via stdin (safe, no shell injection)
+    // Step 2: derive public key ├óΓé¼ΓÇ¥ pipe private key to `wg pubkey` via stdin (safe, no shell injection)
     const publicKey = await new Promise((resolve, reject) => {
       const child = execFile(WG_EXE, ['pubkey'], { timeout: 10000, windowsHide: true }, (err, stdout, stderr) => {
         if (err) return reject(new Error(stderr?.trim() || err.message));
@@ -1287,45 +1353,22 @@ app.post('/api/wireguard/install', async (req, res) => {
   }
   const privateKey = fsSync.readFileSync(privateKeyFile, 'utf8').trim();
 
-  // Build the WireGuard config â€” subnet from env (default: /16 to match server)
-  const confContent = [
-    '[Interface]',
-    `PrivateKey = ${privateKey}`,
-    `Address = ${vpnIp}/24`,
-    `DNS = ${dns || WG_DNS}`,
-    '',
-    '[Peer]',
-    `PublicKey = ${serverPublicKey}`,
-    `AllowedIPs = ${VPN_ALLOWED_IPS}`,
-    `Endpoint = ${serverEndpoint}`,
-    'PersistentKeepalive = 25',
-  ].join('\n');  // LF only â€” WireGuard on Windows accepts both LF and CRLF
+  const { confPath, tempConfPath } = ensureWireGuardConfigFile({
+    privateKey,
+    serverPublicKey,
+    vpnIp,
+    dns: dns || WG_DNS,
+    serverEndpoint,
+    allowedIPs: VPN_ALLOWED_IPS,
+  });
 
-  // Write config to WireGuard tunnel directory
-  // Use Buffer.from with 'utf8' to guarantee NO BOM â€” Node's default utf8 has no BOM
-  // but we make it explicit to be safe.
-  const confPath = path.join(WG_TUNNEL_DIR, `${WIREGUARD_TUNNEL_NAME}.conf`);
+  // Install tunnel via WireGuard CLI (requires admin ΓÇö bridge must run as Administrator)
   try {
-    if (!fsSync.existsSync(WG_TUNNEL_DIR)) fsSync.mkdirSync(WG_TUNNEL_DIR, { recursive: true });
-    // Write as raw buffer â€” absolutely no BOM
-    fsSync.writeFileSync(confPath, Buffer.from(confContent, 'utf8'));
-  } catch (err) {
-    return res.status(500).json({ success: false, error: `Failed to write config: ${err.message}. Run the bridge as Administrator.` });
-  }
-
-  // Also write to user's temp directory as fallback for GUI import
-  const tempConfPath = path.join(process.env.TEMP || 'C:\\Temp', `${WIREGUARD_TUNNEL_NAME}.conf`);
-  try {
-    fsSync.writeFileSync(tempConfPath, Buffer.from(confContent, 'utf8'));
-  } catch { /* temp write failure is non-fatal */ }
-
-  // Install tunnel via WireGuard CLI (requires admin — bridge must run as Administrator)
-  try {
-    // Remove existing tunnel (elevated via RunAs — works even if backend is not admin)
+    // Remove existing tunnel (elevated via RunAs ΓÇö works even if backend is not admin)
     await runPS(`Start-Process -FilePath 'C:\\Program Files\\WireGuard\\wireguard.exe' -ArgumentList '/uninstalltunnelservice','${WIREGUARD_TUNNEL_NAME}' -Verb RunAs -Wait -ErrorAction SilentlyContinue`)
       .catch(() => null);
 
-    // Install tunnel service with elevation — this is why it works without running backend as admin
+    // Install tunnel service with elevation ΓÇö this is why it works without running backend as admin
     await runPS(`Start-Process -FilePath 'C:\\Program Files\\WireGuard\\wireguard.exe' -ArgumentList '/installtunnelservice','${confPath.replace(/'/g, "''")}' -Verb RunAs -Wait`);
 
     // Give it 3s to establish
@@ -1345,7 +1388,7 @@ app.post('/api/wireguard/install', async (req, res) => {
         : `Tunnel installed but not yet active. If it stays inactive, open WireGuard app and import: ${tempConfPath}`,
     });
   } catch (err) {
-    // Service install failed — config file is ready, guide user to import via GUI
+    // Service install failed ΓÇö config file is ready, guide user to import via GUI
     const show = await runWg('show', WIREGUARD_TUNNEL_NAME).catch(() => '');
     const active = show.includes('interface:') || show.includes('listening port');
     if (active) {
@@ -1365,7 +1408,7 @@ app.post('/api/wireguard/install', async (req, res) => {
 
 // POST /api/services/install
 // Installs the bridge and frontend as Windows services using NSSM so they
-// start automatically on boot as SYSTEM — no manual "Run as Administrator" needed.
+// start automatically on boot as SYSTEM ΓÇö no manual "Run as Administrator" needed.
 app.post('/api/services/install', async (req, res) => {
   const scriptPath = path.join(__dirname, '..', 'install-services.ps1');
   if (!fsSync.existsSync(scriptPath)) {
@@ -1375,14 +1418,14 @@ app.post('/api/services/install', async (req, res) => {
     });
   }
   try {
-    // Run the install script elevated — the bridge must already be running as admin
+    // Run the install script elevated ΓÇö the bridge must already be running as admin
     // for this to work (powershell Start-Process -Verb RunAs needs an elevated caller)
     const output = await runPS(
       `& '${scriptPath.replace(/'/g, "''")}' *>&1`,
-      120000  // 2 minute timeout — includes possible npm build
+      120000  // 2 minute timeout ΓÇö includes possible npm build
     );
     const success = output.includes('SETUP COMPLETE') || output.includes('is RUNNING');
-    res.json({ success, output, message: success ? 'Services installed and started' : 'Install may have issues — see output' });
+    res.json({ success, output, message: success ? 'Services installed and started' : 'Install may have issues ΓÇö see output' });
   } catch (err) {
     res.json({
       success: false,
@@ -1418,7 +1461,7 @@ app.get('/api/services/status', async (req, res) => {
 });
 
 // POST /api/wireguard/diagnose
-// Diagnoses the VPN connection — detects key mismatch between the running tunnel
+// Diagnoses the VPN connection ΓÇö detects key mismatch between the running tunnel
 // and the saved key in data/, and checks if the tunnel is actually connected.
 // Returns everything the frontend needs to show a clear fix path.
 app.post('/api/wireguard/diagnose', async (req, res) => {
@@ -1455,17 +1498,17 @@ app.post('/api/wireguard/diagnose', async (req, res) => {
   const keyMismatch = savedKey && activeKey && savedKey !== activeKey;
 
   if (keyMismatch) {
-    problems.push(`Key mismatch: saved key (${savedKey.slice(0,16)}…) does not match active tunnel key (${activeKey.slice(0,16)}…)`);
+    problems.push(`Key mismatch: saved key (${savedKey.slice(0,16)}ΓÇª) does not match active tunnel key (${activeKey.slice(0,16)}ΓÇª)`);
     fixes.push({
       action: 'sync_key',
-      label: 'Sync key — update saved key to match running tunnel',
+      label: 'Sync key ΓÇö update saved key to match running tunnel',
       activeKey,
     });
   }
 
-  // 5. No handshake — server doesn't know this tablet yet
+  // 5. No handshake ΓÇö server doesn't know this tablet yet
   if (!hasHandshake) {
-    problems.push('No handshake with server — server may not have this key registered');
+    problems.push('No handshake with server ΓÇö server may not have this key registered');
     fixes.push({
       action: 'show_register_instructions',
       label: 'Register this key on the server',
@@ -1505,19 +1548,19 @@ app.post('/api/wireguard/diagnose', async (req, res) => {
 
 // POST /api/wireguard/sync-key
 // Saves the active tunnel's public key to data/wireguard-public.key
-// so the wizard shows the correct key — fixes the mismatch problem.
+// so the wizard shows the correct key ΓÇö fixes the mismatch problem.
 app.post('/api/wireguard/sync-key', async (req, res) => {
   try {
     const tunnelOutput = await runWg('show', WIREGUARD_TUNNEL_NAME);
     const activeKeyMatch = tunnelOutput.match(/public key:\s*(.+)/i);
     if (!activeKeyMatch) {
-      return res.status(400).json({ success: false, error: 'Tunnel is not running — cannot read active key' });
+      return res.status(400).json({ success: false, error: 'Tunnel is not running ΓÇö cannot read active key' });
     }
     const activeKey = activeKeyMatch[1].trim();
     const keyDir = path.join(__dirname, 'data');
     if (!fsSync.existsSync(keyDir)) fsSync.mkdirSync(keyDir, { recursive: true });
     fsSync.writeFileSync(path.join(keyDir, 'wireguard-public.key'), activeKey);
-    // We cannot recover the private key from wg show — it's hidden.
+    // We cannot recover the private key from wg show ΓÇö it's hidden.
     // The private key is in the conf file though:
     const confPath = path.join(WG_TUNNEL_DIR, `${WIREGUARD_TUNNEL_NAME}.conf`);
     if (fsSync.existsSync(confPath)) {
@@ -1541,7 +1584,7 @@ app.post('/api/wireguard/deactivate', async (req, res) => {
     res.json({ success: true, message: 'WireGuard tunnel stopped' });
   } catch (err) {
     const msg = err.message || '';
-    // Treat "not found" / "does not exist" as already-stopped — not a real error
+    // Treat "not found" / "does not exist" as already-stopped ΓÇö not a real error
     if (/not found|does not exist|0x80070002|cannot find/i.test(msg)) {
       return res.json({ success: true, message: 'Tunnel was already stopped' });
     }
@@ -1559,7 +1602,7 @@ app.post('/api/wireguard/ping', async (req, res) => {
     return res.status(400).json({ success: false, output: 'Invalid target IP address' });
   }
   try {
-    // Use ping.exe directly â€” avoids PowerShell alias ambiguity.
+    // Use ping.exe directly ├óΓé¼ΓÇ¥ avoids PowerShell alias ambiguity.
     // -n 4 = 4 packets, -w 2000 = 2s timeout per packet, -l 32 = 32-byte payload
     const output = await new Promise((resolve, reject) => {
       execFile(
@@ -1567,7 +1610,7 @@ app.post('/api/wireguard/ping', async (req, res) => {
         ['-n', '4', '-w', '2000', '-l', '32', target],
         { timeout: 20000, windowsHide: true },
         (err, stdout, stderr) => {
-          // ping.exe exits with non-zero on failure â€” we want the output regardless
+          // ping.exe exits with non-zero on failure ├óΓé¼ΓÇ¥ we want the output regardless
           // so we resolve even on error (stderr) to show the user what happened
           const out = (stdout || stderr || (err ? err.message : 'No output')).trim();
           resolve(out);
@@ -1576,7 +1619,7 @@ app.post('/api/wireguard/ping', async (req, res) => {
     });
 
     const out = String(output);
-    // Windows ping success indicators â€” works on EN, FR, DE, and other locales
+    // Windows ping success indicators ├óΓé¼ΓÇ¥ works on EN, FR, DE, and other locales
     // "TTL=" appears in every locale for successful replies
     const success = out.includes('TTL=') || out.includes('ttl=') || out.includes('bytes=');
     res.json({ success, output: out });
@@ -1639,7 +1682,7 @@ app.get('/api/school/me', (req, res) => {
   res.json({ success: true, user: schoolUser, loggedIn: !!schoolAuthToken });
 });
 
-// ── Middleware: require school token ─────────────────────────────────────────
+// ΓöÇΓöÇ Middleware: require school token ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 function requireSchoolToken(req, res, next) {
   const token = req.headers['x-school-token'] || req.query.token || schoolAuthToken;
   if (!token) return res.status(401).json({ success: false, error: 'Not logged in to school server' });
@@ -1647,7 +1690,7 @@ function requireSchoolToken(req, res, next) {
   next();
 }
 
-// ── Approved Exits (Gate Keeper) ─────────────────────────────────────────────
+// ΓöÇΓöÇ Approved Exits (Gate Keeper) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // GET /api/school/approved-exits
 app.get('/api/school/approved-exits', requireSchoolToken, async (req, res) => {
   const date = req.query.date || '';
@@ -1667,7 +1710,7 @@ app.patch('/api/school/leaves/:id/confirm-return', requireSchoolToken, async (re
   res.status(status).json(json);
 });
 
-// ── Leave Management (Patron/DOD view) ───────────────────────────────────────
+// ΓöÇΓöÇ Leave Management (Patron/DOD view) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // GET /api/school/leaves
 app.get('/api/school/leaves', requireSchoolToken, async (req, res) => {
   const qs = new URLSearchParams(req.query).toString();
@@ -1681,7 +1724,7 @@ app.post('/api/school/leaves', requireSchoolToken, async (req, res) => {
   res.status(status).json(json);
 });
 
-// ── Manual Attendance ─────────────────────────────────────────────────────────
+// ΓöÇΓöÇ Manual Attendance ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // GET /api/school/students  -- fetch students by class or dormitory
 app.get('/api/school/students', requireSchoolToken, async (req, res) => {
   const qs = new URLSearchParams(req.query).toString();
@@ -1708,7 +1751,7 @@ app.post('/api/school/attendance/manual', requireSchoolToken, async (req, res) =
   if (!session_id || !Array.isArray(records)) {
     return res.status(400).json({ success: false, error: 'session_id and records[] required' });
   }
-  // Submit each correction — relay individually (server has no bulk endpoint)
+  // Submit each correction ΓÇö relay individually (server has no bulk endpoint)
   const results = [];
   for (const rec of records) {
     if (!rec.student_id || !rec.status) continue;
@@ -1728,7 +1771,7 @@ app.post('/api/school/gate-attendance', requireSchoolToken, async (req, res) => 
   res.status(status).json(json);
 });
 
-// ── User Management ───────────────────────────────────────────────────────────
+// ΓöÇΓöÇ User Management ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // GET /api/school/users
 app.get('/api/school/users', requireSchoolToken, async (req, res) => {
   const qs = new URLSearchParams(req.query).toString();
@@ -1754,7 +1797,7 @@ app.delete('/api/school/users/:id', requireSchoolToken, async (req, res) => {
   res.status(status).json(json);
 });
 
-// ── Boarding sessions (patron) ────────────────────────────────────────────────
+// ΓöÇΓöÇ Boarding sessions (patron) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 app.get('/api/school/boarding/sessions', requireSchoolToken, async (req, res) => {
   const qs = new URLSearchParams(req.query).toString();
   const { status, json } = await relayToServer('GET', `/boarding/attendance/sessions${qs ? `?${qs}` : ''}`, null, req.schoolToken);
@@ -1766,7 +1809,7 @@ app.get('/api/school/boarding/sessions/:id', requireSchoolToken, async (req, res
   res.status(status).json(json);
 });
 
-// ── Student photo proxy (fetches photo from server, serves to tablet frontend) ─
+// ΓöÇΓöÇ Student photo proxy (fetches photo from server, serves to tablet frontend) ΓöÇ
 // Note: token passed as query param since this is used via <img src="...">
 app.get('/api/school/photo', async (req, res) => {
   const url = req.query.url;
@@ -1798,6 +1841,7 @@ process.on('SIGINT', () => {
   if (bridgeProcess) bridgeProcess.kill();
   process.exit(0);
 });
+
 
 
 
