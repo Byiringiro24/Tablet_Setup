@@ -131,5 +131,5 @@ export const schoolApi = {
 
   // Photo proxy
   photoUrl: (originalUrl: string) =>
-    `http://localhost:5000/api/school/photo?url=${encodeURIComponent(originalUrl)}`,
+    `${API_URL}/api/school/photo?url=${encodeURIComponent(originalUrl)}`,
 };
