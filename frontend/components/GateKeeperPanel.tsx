@@ -210,7 +210,7 @@ export default function GateKeeperPanel({ onClose }: { onClose: () => void }) {
                 ${isSelected ? "border-cyan-500/50 bg-cyan-500/10" : "border-slate-700 bg-slate-900/60 hover:border-slate-600"}
                 ${isLate ? "border-red-500/40 bg-red-500/5" : ""}`}>
               {/* Photo */}
-              <div className="h-16 w-14 shrink-0 rounded-xl overflow-hidden border-2 border-slate-700">
+              <div className="h-20 w-16 shrink-0 rounded-xl overflow-hidden border-2 border-slate-700">
                 {photoSrc ? (
                   <img src={photoSrc} alt={name} className="h-full w-full object-cover"
                     onError={e => { (e.currentTarget as any).style.display = "none"; }} />
