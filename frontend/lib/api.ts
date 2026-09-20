@@ -10,6 +10,7 @@ const api = axios.create({
 export const deviceApi = {
   connect: (data: { deviceId?: string; ipAddress: string; port: number; license?: number; [key: string]: any }) => api.post('/device/connect', data),
   connectSaved: () => api.post('/device/connect-saved'),
+  saveConfig: (data: { deviceId?: string; ipAddress?: string; port?: number; license?: number; [key: string]: any }) => api.post('/device/save-config', data),
   disconnect: () => api.post('/device/disconnect'),
   reconnect: () => api.post('/device/reconnect'),
   getStatus: () => api.get('/device/status'),
@@ -130,6 +131,23 @@ export const schoolApi = {
     api.delete(`/school/users/${id}`),
 
   // Photo proxy
-  photoUrl: (originalUrl: string) =>
-    `${API_URL}/api/school/photo?url=${encodeURIComponent(originalUrl)}`,
+  photoUrl: (originalUrl: string) => {
+    if (!originalUrl) return '';
+    const trimmed = String(originalUrl).trim();
+    // If already absolute (http/https), proxy it
+    if (/^https?:\/\//i.test(trimmed)) {
+      return `${API_URL}/api/school/photo?url=${encodeURIComponent(trimmed)}`;
+    }
+    // Protocol-relative (//host/path) -> assume https
+    if (/^\/\//.test(trimmed)) {
+      return `${API_URL}/api/school/photo?url=${encodeURIComponent('https:' + trimmed)}`;
+    }
+    // Root-relative (/uploads/...) -> try to resolve against known server base
+    const serverBase = process.env.NEXT_PUBLIC_SERVER_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'https://backend.ecareafrica.net';
+    if (/^\//.test(trimmed)) {
+      return `${API_URL}/api/school/photo?url=${encodeURIComponent(serverBase + trimmed)}`;
+    }
+    // Fallback: treat as relative path on server base
+    return `${API_URL}/api/school/photo?url=${encodeURIComponent(serverBase + '/' + trimmed)}`;
+  },
 };

@@ -1,0 +1,33 @@
+# ── STEP 1: Stop services ─────────────────────────────────────
+Stop-Service EcaAfrica-Frontend -ErrorAction SilentlyContinue
+Stop-Service EcaAfrica-Backend  -ErrorAction SilentlyContinue
+Write-Host "Services stopped"
+
+# ── STEP 2: Pull new code ─────────────────────────────────────
+cd C:\EcaAfrica
+git fetch origin
+git reset --hard origin/Testing-Branch
+Write-Host "Code updated"
+
+# ── STEP 3: Rebuild backend ───────────────────────────────────
+cd C:\EcaAfrica\backend
+npm install
+Write-Host "Backend dependencies updated"
+
+# ── STEP 4: Rebuild frontend ──────────────────────────────────
+cd C:\EcaAfrica\frontend
+npm install
+npm run build
+Write-Host "Frontend built"
+
+# ── STEP 5: Restart services ──────────────────────────────────
+Start-Service EcaAfrica-Backend
+Start-Sleep -Seconds 3
+Start-Service EcaAfrica-Frontend
+Write-Host "Services restarted"
+
+# ── STEP 6: Verify ────────────────────────────────────────────
+Get-Service *EcaAfrica*
+Start-Sleep -Seconds 3
+try { $h = Invoke-RestMethod "http://localhost:5000/api/health" -TimeoutSec 5; Write-Host "Backend OK: $($h.status)" } catch { Write-Host "Backend not ready yet" }
+Write-Host "Done"
