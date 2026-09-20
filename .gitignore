@@ -15,8 +15,6 @@ FKBridge/obj/
 DLLs/
 
 # Environment & secrets
-.env
-.env.local
 .env*.local
 
 # OS
@@ -34,3 +32,4 @@ backend/data/wireguard-public.key
 # WireGuard private keys — NEVER commit these
 backend/data/wireguard-private.key
 credentials.md
+config.bat
