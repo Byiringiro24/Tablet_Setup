@@ -1,0 +1,24 @@
+{
+  "default_branch": "master",
+  "branches": [
+    "Testing-Branch",
+    "enforce-install-root",
+    "main",
+    "master",
+    "origin"
+  ],
+  "parent": {
+    "Testing-Branch": "master",
+    "enforce-install-root": "master",
+    "main": "master",
+    "master": null,
+    "origin": "master"
+  },
+  "order": [
+    "master",
+    "Testing-Branch",
+    "enforce-install-root",
+    "main",
+    "origin"
+  ]
+}
