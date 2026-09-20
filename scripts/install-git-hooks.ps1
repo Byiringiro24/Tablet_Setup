@@ -15,15 +15,19 @@ function Get-GitDir {
 $gitDir = Get-GitDir
 if (-not $gitDir) { Write-Error "Not a git repository (cannot find .git). Run this from repo root."; exit 2 }
 
-$hookPath = Join-Path $gitDir 'hooks\post-merge'
+# Copy all hooks from repo templates into the repository hooks directory
+$templateHooks = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Definition) 'git-templates\hooks'
+if (-not (Test-Path $templateHooks)) { Write-Error "Template hooks folder not found: $templateHooks"; exit 4 }
 
-$hookContent = "@echo off`r`n" +
-"powershell -NoProfile -ExecutionPolicy Bypass -File \"%~dp0..\\..\\scripts\\ensure-install-root.ps1\" -NonInteractive`r`n"
-
-if (Test-Path $hookPath -and -not $Force) {
-  Write-Output "A post-merge hook already exists at $hookPath. Use -Force to overwrite."
-  exit 3
+Get-ChildItem -Path $templateHooks -File | ForEach-Object {
+  $destHook = Join-Path $gitDir ('hooks\' + $_.Name)
+  if (Test-Path $destHook -and -not $Force) {
+    Write-Output "Hook $($_.Name) already exists at $destHook — use -Force to overwrite."
+  } else {
+    Copy-Item -Path $_.FullName -Destination $destHook -Force
+    # Ensure hooks are executable (on Windows batch/ps1 hooks will run)
+    Write-Output "Installed hook: $destHook"
+  }
 }
 
-Set-Content -Path $hookPath -Value $hookContent -Encoding ASCII
-Write-Output "Installed post-merge hook at: $hookPath"
+Write-Output "All template hooks copied to: $gitDir\hooks"
