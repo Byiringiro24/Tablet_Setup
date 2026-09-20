@@ -10,6 +10,7 @@ const api = axios.create({
 export const deviceApi = {
   connect: (data: { deviceId?: string; ipAddress: string; port: number; license?: number; [key: string]: any }) => api.post('/device/connect', data),
   connectSaved: () => api.post('/device/connect-saved'),
+  saveConfig: (data: { deviceId?: string; ipAddress?: string; port?: number; license?: number; [key: string]: any }) => api.post('/device/save-config', data),
   disconnect: () => api.post('/device/disconnect'),
   reconnect: () => api.post('/device/reconnect'),
   getStatus: () => api.get('/device/status'),

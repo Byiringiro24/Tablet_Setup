@@ -24,7 +24,7 @@ New-Item -Path $tmpRoot -ItemType Directory -Force | Out-Null
 $repos = @(
   @{ url = 'https://github.com/MbarushimanaFabrice/Ecareafrica_backend.git'; branch = 'New_Serverr' },
   @{ url = 'https://github.com/MbarushimanaFabrice/Ecareafrica_frontend.git'; branch = 'New_Serverr' },
-  @{ url = 'https://github.com/Byiringiro24/Tablet_Setup.git'; branch = 'Testing-Branch' }
+  @{ url = 'https://github.com/Byiringiro24/Tablet_Setup.git'; branch = 'main' }
 )
 
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) { Write-Error "git not found"; exit 2 }

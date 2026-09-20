@@ -51,15 +51,33 @@ export default function GateKeeperPanel({ onClose }: { onClose: () => void }) {
     finally { setLoginBusy(false); }
   };
 
+  const normalizeExit = (item: any): ApprovedExit => {
+    const student = item?.student ?? null;
+    return {
+      ...item,
+      id: item?.id ?? item?.leave_id ?? item?.leaveId ?? "",
+      leave_id: item?.leave_id ?? item?.id ?? item?.leaveId ?? "",
+      student_id: item?.student_id ?? student?.id ?? "",
+      leave_state: item?.leave_state ?? item?.status ?? "",
+      student: student ? {
+        ...student,
+        id: student.id ?? student.student_id ?? "",
+      } : null,
+    } as ApprovedExit;
+  };
+
   const loadExits = async () => {
     setLoading(true);
     try {
       const today = new Date().toISOString().slice(0, 10);
       const r = await schoolApi.getApprovedExits(today);
-      const data = (r.data as any)?.data ?? r.data ?? [];
-      setExits(Array.isArray(data) ? data : []);
-    } catch (e: any) { toast.error(e?.response?.data?.error ?? "Failed to load exits"); }
-    finally { setLoading(false); }
+      const payload = (r.data as any)?.data ?? r.data ?? [];
+      const data = Array.isArray(payload) ? payload.map(normalizeExit) : [];
+      setExits(data);
+    } catch (e: any) {
+      const message = e?.response?.data?.error ?? e?.response?.data?.message ?? "Failed to load exits";
+      toast.error(message);
+    } finally { setLoading(false); }
   };
 
   const filtered = exits.filter(e => {
@@ -210,7 +228,7 @@ export default function GateKeeperPanel({ onClose }: { onClose: () => void }) {
                 ${isSelected ? "border-cyan-500/50 bg-cyan-500/10" : "border-slate-700 bg-slate-900/60 hover:border-slate-600"}
                 ${isLate ? "border-red-500/40 bg-red-500/5" : ""}`}>
               {/* Photo */}
-              <div className="h-20 w-16 shrink-0 rounded-xl overflow-hidden border-2 border-slate-700">
+              <div className="h-28 w-20 shrink-0 rounded-xl overflow-hidden border-2 border-slate-700">
                 {photoSrc ? (
                   <img src={photoSrc} alt={name} className="h-full w-full object-cover"
                     onError={e => { (e.currentTarget as any).style.display = "none"; }} />
@@ -244,7 +262,7 @@ export default function GateKeeperPanel({ onClose }: { onClose: () => void }) {
       {selected && (
         <div className="shrink-0 border-t-2 border-cyan-500/30 bg-slate-900 p-5 space-y-4">
           <div className="flex items-center gap-4">
-            <div className="h-20 w-16 shrink-0 rounded-2xl overflow-hidden border-2 border-cyan-500/40">
+            <div className="h-28 w-20 shrink-0 rounded-2xl overflow-hidden border-2 border-cyan-500/40">
               {selected.student?.photo_url ? (
                 <img src={schoolApi.photoUrl(selected.student.photo_url)} alt="" className="h-full w-full object-cover" />
               ) : (

@@ -556,6 +556,9 @@ export default function SmartAttendanceDashboard() {
     toast.success("Settings saved - connecting...", { id: "ac" });
     if (autoConnectRef.current) clearTimeout(autoConnectRef.current);
     setConnectAttempt(0);
+    // Persist developer-supplied config immediately so it's kept until explicitly changed
+    deviceApi.saveConfig({ ...cfg }).catch(() => null);
+
     deviceApi.connect({ ...cfg, timeoutMs: 6000, saveConfig: true })
       .then(res => {
         if (!mountedRef.current) return;

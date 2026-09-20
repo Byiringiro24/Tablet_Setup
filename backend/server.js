@@ -878,15 +878,19 @@ app.post('/api/device/connect', async (req, res) => {
   const normalizedProtocol = protocolType === null || protocolType === undefined ? -1 : Number(protocolType);
   const normalizedTimeout = Number(timeoutMs) > 0 ? Number(timeoutMs) : 3000;
 
-  // Always keep the latest IP in the saved config when the FK device address changes.
-  if (saveConfig === true || targetAddress) {
+  // Preserve the developer-set IP unless the user explicitly saves a new one.
+  // Generic connect attempts must not clobber a known saved config while auto-connect is running.
+  const existingConfig = activeDeviceConfig || loadDeviceConfig() || {};
+  const shouldPersistConfig = saveConfig === true || (!existingConfig.ipAddress && Boolean(targetAddress));
+
+  if (shouldPersistConfig) {
     const cfg = {
-      ...(activeDeviceConfig || loadDeviceConfig() || {}),
-      ipAddress: String(targetAddress || '').trim(),
-      port: Number(port) || 5005,
-      license: Number(license) || 1261,
-      deviceId: String(deviceId || '').trim(),
-      netPassword: Number(netPassword) || 0,
+      ...existingConfig,
+      ipAddress: String(targetAddress || existingConfig.ipAddress || '').trim(),
+      port: Number(port) || Number(existingConfig.port) || 5005,
+      license: Number(license) || Number(existingConfig.license) || 1261,
+      deviceId: String(deviceId || existingConfig.deviceId || '').trim(),
+      netPassword: Number(netPassword) || Number(existingConfig.netPassword) || 0,
       protocolType: normalizedProtocol,
       timeoutMs: normalizedTimeout,
     };
