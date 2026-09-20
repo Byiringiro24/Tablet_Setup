@@ -208,7 +208,7 @@ export default function ManualAttendancePanel({ onClose }: { onClose: () => void
                       : "border-red-600/40 bg-red-600/10"
                   }`}>
                   {/* Photo / avatar */}
-                  <div className={`h-12 w-12 shrink-0 rounded-full overflow-hidden border-2 ${isPresent ? "border-emerald-500/50" : "border-red-500/50"}`}>
+                  <div className={`h-20 w-20 shrink-0 rounded-full overflow-hidden border-2 ${isPresent ? "border-emerald-500/50" : "border-red-500/50"}`}>
                     {photoSrc ? (
                       <img src={photoSrc} alt="" className="h-full w-full object-cover"
                         onError={e => { (e.currentTarget as any).style.display = "none"; }} />

@@ -1,0 +1,10 @@
+[Interface]
+PrivateKey = mGSN/oFs64XyZbEi0LM6EGl1W7f0HENJ9m+Y+LfINF4=
+Address = 10.0.0.6/32
+DNS = 1.1.1.1
+
+[Peer]
+PublicKey = 6b8yTx1nz243Z044DZTt/OP5+gdLj9lVmUr5DteDzko=
+AllowedIPs = 10.0.0.0/16
+Endpoint = 169.58.124.150:51820
+PersistentKeepalive = 25

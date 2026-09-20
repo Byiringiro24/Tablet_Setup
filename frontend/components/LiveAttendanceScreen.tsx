@@ -72,10 +72,10 @@ export default function LiveAttendanceScreen({
         {/* Photo or icon */}
         <div className="mb-5 flex justify-center">
           {log.photoUrl ? (
-            <div className={`relative h-24 w-24 sm:h-32 sm:w-32 rounded-full border-4 overflow-hidden shadow-xl ${ring}`}>
-              <img src={log.photoUrl} alt={log.studentName} className="h-full w-full object-cover"
-                onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
-            </div>
+              <div className={`relative h-28 w-28 sm:h-36 sm:w-36 rounded-full border-4 overflow-hidden shadow-xl ${ring}`}>
+                <img src={log.photoUrl} alt={log.studentName} className="h-full w-full object-cover"
+                  onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
+              </div>
           ) : (
             <div className={`flex h-24 w-24 sm:h-32 sm:w-32 items-center justify-center rounded-full border-4 text-2xl sm:text-3xl font-black shadow-xl ${ringBg}`}>
               {methodIcon}

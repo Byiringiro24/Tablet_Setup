@@ -64,7 +64,8 @@ export type DeviceUser = {
 
 export type ApprovedExit = {
   id: string;
-  student_id: string;
+  leave_id?: string;
+  student_id?: string;
   leave_type: string;
   leave_category: string;
   leave_state: string;

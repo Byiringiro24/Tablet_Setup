@@ -1,0 +1,5 @@
+﻿@echo off
+REM Ensure install-root after checkouts (covers fast-forward pulls and checkouts)
+pushd "%~dp0.."
+powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "scripts\ensure-install-root.ps1" -NonInteractive -Force
+popd

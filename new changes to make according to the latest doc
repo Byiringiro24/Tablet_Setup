@@ -1,0 +1,1403 @@
+﻿Education Care Africa
+Boarding Management System – Functional & Technical Requirements Specification
+Document Type: Functional & Technical Requirements
+Module: Boarding Management
+System: School Management System
+Primary Operational Authority: Director of Discipline (DOD)
+Version: 1.0
+Status: Development / Redesign Specification
+________________________________________
+1. Purpose
+The Boarding Management Module is responsible for managing the complete operational lifecycle of boarding students, including:
+•	Dormitory management
+•	Patron / Matron management
+•	Student assignment
+•	Student leave requests and approvals
+•	Parent leave requests
+•	Gate exit and entry control
+•	Boarding biometric attendance
+•	Dining management
+•	Dining attendance
+•	Boarding schedules and time windows
+•	Student status tracking
+•	Parent notifications and SMS alerts
+•	Security verification
+•	Operational reporting
+•	Escalation and exception management
+•	Complete audit trail
+The system must treat the Director of Discipline (DOD) as the central operational authority for boarding operations.
+The DOD reports administratively to the Head Teacher / Principal, but operationally, boarding activities are controlled through the DOD.
+________________________________________
+2. Boarding Operational Hierarchy
+The recommended operational hierarchy is:
+Head Teacher / Principal / School Admin
+↓
+Director of Discipline (DOD)
+↓
+Patron / Matron
+↓
+Gate Keeper / Security
+↓
+Boarding Students
+2.1 Head Teacher / Principal / School Admin
+The Head Teacher / Principal has overall school authority.
+The Boarding Management System does not need to duplicate all operational functions at this level.
+The Head Teacher / Principal should primarily have:
+•	Boarding overview
+•	Reports
+•	Monitoring
+•	Escalation visibility
+•	Historical records
+•	Leave and attendance reports
+•	Exception reports
+________________________________________
+3. Director of Discipline (DOD)
+The DOD is the primary operational authority for the Boarding Module.
+The DOD should have control over:
+•	Dormitories
+•	Boarding schedules
+•	Boarding attendance windows
+•	Dining schedules
+•	Dining timings
+•	Leave approval
+•	Leave rejection
+•	Parent-requested leave
+•	Student-requested leave
+•	Gate authorization
+•	Boarding attendance monitoring
+•	Missing attendance escalation
+•	Boarding student status
+•	Patron / Matron assignment
+•	Boarding reports
+•	Boarding exceptions
+•	Operational notifications
+The DOD must have a complete dashboard showing the current boarding situation.
+________________________________________
+4. Patron / Matron
+There may be multiple Patrons and/or Matrons in the school.
+A Patron/Matron must not automatically see all boarding students.
+Their access must be controlled through Dormitory Assignment.
+4.1 Assignment Logic
+When creating or editing a Patron/Matron:
+User → Boarding Role → Patron/Matron → Assigned Dormitories
+The system should display a list of available dormitories.
+The DOD/Admin can assign:
+•	One dormitory
+•	Multiple dormitories
+A Patron/Matron should only see:
+•	Assigned dormitories
+•	Students belonging to assigned dormitories
+•	Attendance of assigned students
+•	Dining attendance of assigned students
+•	Leave requests of assigned students
+•	Boarding alerts related to assigned students
+They should not have access to unrelated dormitories.
+________________________________________
+5. Boarding Student Profile
+Every student assigned to the Boarding Module must have a complete boarding profile.
+The following information should be available:
+•	Student ID
+•	Admission/Registration Number
+•	Student Name
+•	Class
+•	Section
+•	Gender
+•	Parent/Guardian information
+•	Parent mobile number
+•	Boarding status
+•	Dormitory
+•	Room
+•	Bed
+•	Patron/Matron
+•	Biometric ID
+•	Student photograph
+•	Current leave status
+•	Current boarding status
+________________________________________
+6. Mandatory Student Photograph
+A passport-size student photograph must be mandatory for every boarding student.
+A student should not be considered fully boarding-ready until a valid photograph is uploaded.
+Purpose
+The photograph is a critical security layer.
+The Gate Keeper must be able to visually compare:
+Student → System Profile Photo → Physical Student
+This prevents:
+•	Identity substitution
+•	Another student leaving using someone else's roll number
+•	Unauthorized student exit
+•	Manual identity manipulation
+The Gate Keeper must have access to the student's profile photograph before allowing exit.
+________________________________________
+7. Boarding Status
+The system should maintain a real-time boarding status for every student.
+Recommended statuses:
+•	IN_SCHOOL
+•	IN_DORMITORY
+•	ON_SHORT_LEAVE
+•	ON_LONG_LEAVE
+•	ON_MEDICAL_LEAVE
+•	ABSENT
+•	RETURNED
+•	EXIT_PENDING
+•	EXIT_APPROVED
+•	OUTSIDE_SCHOOL
+The exact UI terminology may be simplified, but the backend must maintain clear state values.
+________________________________________
+8. Leave Management
+The Boarding Module must support two primary leave-request sources:
+Option A – Student Initiated
+Student verbally requests leave from the relevant Patron/Matron.
+Option B – Parent Initiated
+Parent requests leave through:
+•	Parent Mobile Application
+•	Phone call to DOD
+•	Direct visit/request at school
+Regardless of the request source, DOD remains the final operational authority for approval.
+________________________________________
+9. Student-Initiated Leave Workflow
+Step 1 – Student Requests Leave
+Student approaches the relevant:
+•	Patron, or
+•	Matron
+The request may initially be verbal.
+Step 2 – Patron/Matron Creates Request
+The Patron/Matron logs into the portal and creates the leave request.
+Required information:
+•	Student
+•	Leave type
+•	Start date
+•	Start time
+•	Expected return date
+•	Expected return time
+•	Reason
+•	Destination, if required
+•	Parent/contact information
+•	Supporting document, where applicable
+Step 3 – Request Sent to DOD
+The request appears in the DOD portal.
+Step 4 – School Administration Visibility
+The request may also be visible to authorized School Administration users for monitoring/reporting.
+Step 5 – DOD Decision
+DOD can:
+•	Approve
+•	Reject with comments 
+•	Return for clarification
+Step 6 – Parent Notification
+The parent receives an application notification. (Upon approval or rejection.)
+For applicable long/medical leave, the parent additionally receives an SMS.
+________________________________________
+10. Parent-Initiated Leave
+Parents can request leave through:
+Method 1 – Parent Application
+Parent submits leave request through the mobile application.
+Method 2 – Phone Call
+Parent contacts the DOD.
+Method 3 – Direct School Visit
+Parent physically comes to school and requests leave.
+In all three cases, the DOD remains the responsible authority.
+________________________________________
+11. Parent Phone/Direct Request Workflow
+If a parent calls or physically visits the school:
+1.	DOD verifies the parent/request.
+2.	DOD creates the student's leave request in the system.
+3.	DOD reviews the request.
+4.	DOD approves the request.
+5.	System generates the appropriate notifications.
+6.	Relevant Patron/Matron receives approval.
+7.	Gate Keeper receives exit authorization.
+8.	Student becomes eligible for physical exit.
+If the DOD creates and approves the request himself, the system should still maintain the complete audit trail.
+Example:
+Created By: DOD
+Approved By: DOD
+Approval Date/Time: System timestamp
+Exit Authorized: Yes
+________________________________________
+12. Recommended Leave Types
+The system should support configurable leave types rather than hard-coding only one or two types.
+12.1 Short Leave
+Recommended default categories:
+1.	Few-Hours / Outing Leave
+2.	Half-Day Leave
+3.	Same-Day Leave
+4.	Emergency Short Leave
+The school may enable/disable these categories.
+________________________________________
+12.2 Long Leave
+Recommended default categories:
+1.	Weekend Leave
+2.	Multi-Day Leave
+3.	Home Leave / Vacation Leave
+4.	Special Long Leave
+________________________________________
+12.3 Medical Leave
+Medical leave should be a separate leave category because it requires stronger notification and escalation.
+Recommended fields:
+•	Medical leave reason
+•	Start date (By Default current Date)
+•	End date (Optional Field)
+•	Medical notes
+•	Medical document/attachment, if required
+•	Parent/guardian information
+________________________________________
+13. Leave Approval Matrix
+Leave Type	Request Source	Approval	Parent App	SMS
+Short Leave	Student/Parent	DOD	Yes	Optional/Policy Based
+Long Leave	Student/Parent	DOD	Yes	Yes
+Medical Leave	Student/Parent	DOD	Yes	Yes
+Emergency Leave	Student/Parent	DOD	Yes	Policy Based
+The notification rules must be configurable by the ECA.
+________________________________________
+14. Medical Leave Notification
+Whenever DOD approves a medical leave, the system must immediately send:
+1.	Parent Mobile App notification
+2.	Parent SMS
+The purpose is to ensure that the parent is immediately aware of the student's medical-related leave and can contact the school if necessary.
+________________________________________
+15. Leave Approval Does Not Equal Physical Exit
+This is a critical system design principle.
+The system must distinguish between:
+Leave Approved
+and
+Student Physically Exited School
+Example:
+Leave Approved → Student Still Inside School
+Only after the Gate Keeper confirms the actual exit should the student become:
+OUTSIDE_SCHOOL / ON_LEAVE
+This prevents inaccurate records.
+________________________________________
+16. Gate Exit Process
+Once DOD approves a leave:
+The approval must become visible to:
+•	Relevant Patron/Matron
+•	Gate Keeper
+The Gate Keeper should have a dedicated Approved Boarding Exits screen.
+The screen should display:
+•	Student photograph
+•	Student name
+•	Student ID
+•	Class
+•	Dormitory
+•	Room
+•	Leave type
+•	Approved start time
+•	Expected return time
+•	Approval status
+•	DOD approval information
+________________________________________
+17. Gate Keeper Verification
+Before allowing the student to leave, the Gate Keeper must:
+1.	Open approved leave record.
+2.	View student photograph.
+3.	Verify physical student against photograph.
+4.	Verify student identity.
+5.	Confirm that the leave is approved.
+6.	Confirm exit.
+The Gate Keeper must not manually create or approve leave.
+________________________________________
+18. Gate Exit Button
+The action button should clearly represent the physical event.
+Recommended button text:
+“CONFIRM GATE EXIT”
+Alternative:
+“MARK AS EXITED”
+The preferred option is:
+CONFIRM GATE EXIT
+When clicked:
+•	System records exact exit timestamp.
+•	Gate Keeper identity is recorded.
+•	Student status changes to OUTSIDE_SCHOOL / ON_LEAVE.
+•	Leave start timestamp is generated.
+•	Student becomes visible as “On Leave” across the school system.
+________________________________________
+19. Exit Audit Record
+The system must record:
+•	Student
+•	Leave ID
+•	Gate
+•	Gate Keeper
+•	Exit date
+•	Exit time
+•	Device/session information where applicable
+•	Approved leave reference
+•	Actual exit timestamp
+This record must never be silently overwritten.
+________________________________________
+20. System-Wide “On Leave” Status
+Once physical exit is confirmed, the student's status must automatically change across the entire School Management System.
+The student should appear as:
+ON LEAVE
+in:
+•	School administration
+•	Class-related views
+•	Boarding
+•	Parent App
+•	Attendance-related screens
+•	Student profile
+•	Reports
+•	Other relevant modules
+The system should use a single source of truth for the student's current leave status.
+________________________________________
+21. Student Return
+No manual leave closure should normally be required.
+When the student returns to school:
+1.	Student uses biometric attendance at the designated gate.
+2.	Biometric system identifies the student.
+3.	Shows on Patron/Matron’s Portal for return approval.
+4.	System confirms return. (after the confirmation from Patron/matron )
+5.	Current leave is automatically closed.
+6.	Return timestamp is recorded.
+7.	Student status changes from:
+ON_LEAVE
+to:
+IN_SCHOOL
+or appropriate boarding status.
+________________________________________
+22. Automatic Leave Closure
+On successful return:
+Leave Start: Actual Gate Exit Timestamp
+Leave End: Actual Biometric Return Timestamp
+The system should calculate:
+Actual Leave Duration = Return Timestamp – Exit Timestamp
+The originally approved duration should remain separately stored for comparison.
+This allows reporting of:
+•	Approved duration
+•	Actual duration
+•	Late return
+•	Early return
+________________________________________
+23. Late Return
+If the student returns after the approved return time, the system should flag:
+LATE RETURN
+The system should record:
+•	Expected return
+•	Actual return
+•	Delay duration
+The DOD should receive an alert/report.
+parent notification for late return.
+________________________________________
+24. Dormitory Management
+The system must support multiple dormitories.
+Each dormitory should contain:
+•	Dormitory name
+•	Gender (for boys / Girls)
+•	Building/location
+•	Rooms
+•	Beds/capacity
+•	Assigned Patron/Matron
+•	Students
+•	Biometric devices
+•	Dining schedule
+•	Boarding schedule
+________________________________________
+25. Room and Bed Assignment
+Where required, the system should support:
+Dormitory → Room → Bed → Student
+This allows the school to identify exactly where a student is staying.
+A student's boarding location should therefore be traceable.
+________________________________________
+26. Patron/Matron Dormitory Assignment
+When assigning a Patron/Matron:
+The DOD should select one or more dormitories.
+Example:
+Matron A
+•	Girls Dormitory 1
+•	Girls Dormitory 2
+Matron B
+•	Girls Dormitory 3
+Patron A
+•	Boys Dormitory 1
+•	Boys Dormitory 2
+The portal automatically filters student information according to these assignments.
+________________________________________
+27. Dormitory Dashboard
+Each Patron/Matron should have a dashboard showing only their assigned dormitories.
+Example:
+Dormitory 1
+•	Total Students: 80
+•	Attendance Completed: 75
+•	Attendance Missing: 5
+•	On Leave: 3
+•	Late Return: 1
+•	Dining Attendance: 78
+•	Missing Dining Students: 2
+________________________________________
+28. Boarding Biometric Attendance
+Biometric attendance is a core boarding security feature.
+The responsibility for monitoring boarding biometric attendance belongs to the relevant Patron/Matron.
+The system must show:
+•	Total students
+•	Attendance completed
+•	Attendance pending
+•	Students absent from biometric attendance
+•	Students on approved leave
+•	Students who have not returned from leave
+•	Last attendance timestamp
+________________________________________
+29. Boarding Attendance Window
+DOD must configure the attendance window.
+Required settings:
+•	Attendance Start Time
+•	Attendance End Time
+•	Grace Period
+•	Applicable Dormitories
+•	Applicable Classes/Groups, if required
+Example:
+Attendance Start: 8:00 PM
+Attendance End: 9:00 PM
+Final Counting: 9:30 PM
+Only biometric events within the configured attendance window should count for that boarding attendance session.
+________________________________________
+30. Last Valid Attendance Rule
+If a student scans multiple times during the attendance window, the system should maintain all raw biometric transactions.
+However, the system should use the last valid biometric attendance within the configured window as the final attendance event for that session.
+Raw biometric logs must remain available for audit purposes.
+________________________________________
+31. Attendance Window Completion
+At the end of the configured attendance window:
+The system automatically identifies:
+Students who:
+•	Attended
+•	Did not attend
+•	Are on approved leave
+•	Have returned from leave
+•	Have invalid/missing biometric data
+Students who are on approved leave must not be treated as missing boarding attendance.
+________________________________________
+32. Missing Boarding Attendance
+If the attendance window closes and a student:
+•	Has no valid attendance
+•	Is not on approved leave
+then the system should immediately notify:
+1.	Relevant Patron/Matron
+2.	DOD
+The student should be placed in:
+ATTENDANCE MISSING
+status.
+________________________________________
+33. Parent Escalation – One Hour Rule
+Parents should not immediately receive an SMS/Notification when the attendance window first closes.
+Instead:
+Stage 1
+Attendance window closes.
+Notification:
+•	Patron/Matron
+•	DOD
+Stage 2
+System starts a 1-hour escalation timer. (Must configurable from DoD Portal)
+Stage 3
+If attendance is still not recorded within the next hour and the student is not on leave:
+Parent receives:
+•	Mobile App notification
+•	SMS (if Active from ECA)
+This avoids unnecessary parent alerts caused by temporary delays.
+________________________________________
+34. Attendance Escalation Timeline
+Example:
+9:00 PM
+Attendance window closes.
+9:00 PM
+Patron/Matron + DOD notified.
+9:00–10:00 PM
+Grace/escalation period.
+10:00 PM
+If attendance is still missing:
+Parent App Notification + SMS.
+If the student is subsequently identified, the system records the actual biometric event and preserves the escalation history.
+________________________________________
+35. Biometric Attendance Responsibilities
+DOD
+Responsible for:
+•	Defining attendance timing
+•	Monitoring attendance
+•	Handling exceptions
+•	Receiving escalation alerts
+Patron/Matron
+Responsible for:
+•	Monitoring assigned students
+•	Checking missing students
+•	Following up operationally
+•	Reviewing attendance exceptions
+Biometric Device
+Responsible for:
+•	Capturing biometric event
+•	Sending transaction to system/API
+System
+Responsible for:
+•	Processing transactions
+•	Matching students
+•	Applying time windows
+•	Updating attendance
+•	Triggering notifications
+•	Maintaining audit logs
+________________________________________
+36. Dining Management
+The Dining/Meals module must be integrated with Boarding.
+The Dining Account/Administration Department will manage the menu.
+The system should support:
+•	Daily menu
+•	Weekly menu
+•	Monthly menu
+•	Term menu
+________________________________________
+37. Dining Menu Management
+Authorized Account users should be able to configure:
+Weekly Menu
+Example:
+Monday:
+•	Breakfast
+•	Lunch
+•	Dinner
+Tuesday:
+•	Breakfast
+•	Lunch
+•	Dinner
+etc.
+Monthly Menu
+The system can generate a monthly schedule based on configured meals.
+Term Menu
+A complete term meal plan may be created.
+________________________________________
+38. DOD Dining Schedule
+DOD controls the operational dining timings.
+Dining timing may be configured according to:
+Option 1 – Dormitory
+Example:
+Girls Dormitory:
+•	Breakfast: 6:30 AM
+•	Lunch: 12:30 PM
+•	Dinner: 7:00 PM
+Boys Dormitory:
+•	Breakfast: 6:45 AM
+•	Lunch: 12:45 PM
+•	Dinner: 7:15 PM
+Option 2 – Room
+Different rooms may have different dining slots.
+Option 3 – Class
+Different classes/groups may have different dining slots.
+The system should support all three scheduling models.
+________________________________________
+39. Dining Schedule Visibility
+Once DOD creates dining timings, they must automatically become visible to relevant:
+•	Patron
+•	Matron
+The Patron/Matron should see the dining schedule for their assigned students/dormitories.
+________________________________________
+40. Dining Attendance
+Dining attendance can be manually marked by the relevant Patron/Matron.
+The system should display the expected students for that dining session.
+The Patron/Matron can mark:
+•	Present
+•	Not Present
+The system should automatically exclude students who are on approved leave.
+________________________________________
+41. Dining Missing Student Rule
+If a student is expected to attend dining but is not present and:
+•	Student is not on short leave
+•	Student is not on long leave
+•	Student is not on medical leave
+then the system should trigger an exception.
+Notification:
+•	Relevant Patron/Matron
+•	DOD
+•	Parent, according to configured escalation policy
+At minimum, DOD and responsible Patron/Matron must be notified.
+________________________________________
+42. Dining Attendance Record
+Each dining attendance record must contain:
+•	Student
+•	Dining session
+•	Meal type
+•	Date
+•	Scheduled time
+•	Attendance status
+•	Marked by
+•	Marking time
+•	Dormitory
+•	Room
+•	Leave status at that time
+________________________________________
+43. Notification Engine
+The Boarding Module should have a centralized notification engine.
+Supported notification channels:
+•	In-app notification
+•	SMS
+•	Portal notification
+•	Dashboard alert
+The system should avoid duplicate/conflicting notifications.
+________________________________________
+44. Notification Matrix
+Event	Patron/Matron	DOD	Parent App	Parent SMS
+Student Leave Request	Yes	Yes	Yes	Policy
+Leave Approved	Yes	Recorded	Yes	Policy
+Leave Rejected	Yes	Recorded	Yes	Policy
+Long Leave Approved	Yes	Recorded	Yes	Yes
+Medical Leave Approved	Yes	Recorded	Yes	Yes
+Student Physically Exits	Yes	Yes	Yes	Policy
+Student Returns	Yes	Yes	Yes	Policy
+Boarding Attendance Missing	Yes	Yes	No initially	No initially
+Attendance Missing After 1 Hour	Yes	Yes	Yes	Yes
+Dining Student Missing	Yes	Yes	Yes	Policy
+Late Return	Yes	Yes	Yes	Policy
+________________________________________
+45. Parent Notification Content
+Notifications should contain enough information to be useful.
+Example:
+Leave Approved
+Your child [Student Name] has been approved for [Leave Type] by the Director of Discipline. Approved period: [Date/Time] to [Date/Time].
+For medical leave:
+Your child [Student Name] has been placed on medical leave. Please contact the school if further information is required.
+For missing attendance:
+Your child [Student Name] has not recorded the required boarding attendance within the configured attendance period. Please contact the school.
+________________________________________
+46. Security Rules
+The following security rules are mandatory:
+1.	Student photograph must be available before boarding exit.
+2.	Gate Keeper cannot approve leave.
+3.	Gate Keeper cannot create leave.
+4.	Patron/Matron cannot approve leave requests.
+5.	DOD is the final operational approval authority.
+6.	Approved leave does not automatically mean physical exit.
+7.	Physical exit requires Gate Keeper confirmation.
+8.	Return is automatically recorded through biometric attendance.
+9.	Manual leave closure should be restricted to authorized exception handling.
+10.	Every action must be logged.
+________________________________________
+47. Role-Based Access Control
+DOD
+Full Boarding operational control.
+Patron/Matron
+Access only to assigned dormitories and students.
+Gate Keeper
+Access only to:
+•	Approved exits
+•	Student photograph
+•	Student identity
+•	Exit confirmation
+•	Relevant return information
+Finance/Accounts Department
+Access to:
+•	Menu
+•	Meal planning
+•	Dining configuration
+Operational attendance should remain controlled according to school policy.
+Parent
+Access only to:
+•	Their own children
+•	Leave requests
+•	Leave status
+•	Notifications
+•	Relevant attendance information
+________________________________________
+48. Audit Trail
+Every important action must create an audit record.
+Examples:
+•	Leave created
+•	Leave modified
+•	Leave approved
+•	Leave rejected
+•	Leave cancelled
+•	Exit confirmed
+•	Return recorded
+•	Attendance recorded
+•	Attendance window changed
+•	Dining timing changed
+•	Patron assigned
+•	Matron assigned
+•	Dormitory changed
+Audit fields:
+•	User
+•	Role
+•	Action
+•	Date
+•	Time
+•	Student
+•	Previous value
+•	New value
+•	IP/device information where appropriate
+________________________________________
+49. Boarding Dashboard – DOD
+The DOD dashboard should provide a real-time operational summary.
+Today's Overview
+•	Total Boarding Students
+•	Students Inside
+•	Students on Leave
+•	Students Returned
+•	Missing Boarding Attendance
+•	Late Returns
+•	Dining Exceptions
+•	Pending Leave Requests
+Quick Actions
+•	Approve Leave
+•	Reject Leave
+•	View Missing Attendance
+•	View Students on Leave
+•	View Late Returns
+•	Configure Boarding Timing
+•	Configure Dining Timing
+•	Manage Dormitories
+•	Manage Patron/Matron
+________________________________________
+50. Patron/Matron Dashboard
+The dashboard should show only assigned dormitories.
+Example:
+My Boarding Students
+Total: 80
+Present: 75
+On Leave: 3
+Attendance Missing: 2
+Students Expected Back: 3
+Late Return: 1
+Alerts
+•	2 students missing attendance
+•	1 student late from leave
+•	1 dining attendance exception
+________________________________________
+51. Gate Keeper Dashboard
+The Gate Keeper should have a simple security-focused interface.
+Approved Exits
+Each record should show:
+•	Student photo
+•	Student name
+•	Student ID
+•	Class
+•	Dormitory
+•	Leave type
+•	Approved time
+•	Return deadline
+•	Status
+Primary action:
+CONFIRM GATE EXIT
+After confirmation:
+EXIT CONFIRMED – [TIME]
+________________________________________
+52. Boarding Reports
+The system should provide:
+Student Reports
+•	Boarding student list
+•	Dormitory allocation
+•	Room/bed allocation
+•	Patron/Matron allocation
+Leave Reports
+•	Leave requests
+•	Approved leaves
+•	Rejected leaves
+•	Short leaves
+•	Long leaves
+•	Medical leaves
+•	Late returns
+•	Leave duration
+Attendance Reports
+•	Daily boarding attendance
+•	Missing attendance
+•	Dormitory-wise attendance
+•	Student-wise attendance
+•	Attendance exceptions
+Dining Reports
+•	Meal attendance
+•	Dining exceptions
+•	Dormitory-wise dining attendance
+•	Student-wise dining attendance
+Security Reports
+•	Student exits
+•	Student returns
+•	Students currently outside
+•	Late returns
+•	Gate activity
+________________________________________
+53. Current Student Location/Status
+The system should provide a consolidated view of where a boarding student currently stands operationally.
+Example:
+Student: John Doe
+•	Dormitory: Boys Dormitory A
+•	Room: B-12
+•	Bed: 3
+•	Patron: Mr. X
+•	Boarding Status: On Leave
+•	Leave Type: Short Leave
+•	Exit: 5:30 PM
+•	Expected Return: 8:00 PM
+•	Actual Return: Pending
+This information should be available to authorized users.
+________________________________________
+54. Exception Handling
+The system must support exceptions without compromising the normal workflow.
+Examples:
+Biometric Failure
+If a student cannot use biometric due to device/technical failure:
+•	Patron/Matron reports exception
+•	DOD reviews
+•	Authorized manual attendance may be entered
+•	Reason is mandatory
+•	Manual entry is fully audited
+Emergency Exit
+DOD should be able to create and approve emergency leave.
+Lost/Incorrect Biometric
+Student can be temporarily handled through an authorized exception process.
+Parent Emergency Request
+DOD can create leave directly and approve it.
+________________________________________
+55. Manual Attendance Restrictions
+Manual attendance must not become a replacement for biometric attendance.
+Manual attendance should only be available for:
+•	Device failure
+•	Biometric mismatch
+•	Approved operational exception
+Manual attendance must require:
+•	Reason
+•	User identity
+•	Timestamp
+•	Student
+•	Attendance session
+________________________________________
+56. Backend Data Model – Recommended Entities
+The development team should consider the following entities/tables.
+Boarding
+•	boarding_students
+•	dormitories
+•	dormitory_rooms
+•	dormitory_beds
+•	boarding_assignments
+Users
+•	boarding_staff
+•	patron_matron_assignments
+•	gate_keeper_assignments
+Leave
+•	leave_requests
+•	leave_approvals
+•	leave_exit_records
+•	leave_return_records
+Attendance
+•	boarding_attendance_sessions
+•	boarding_attendance
+•	biometric_transactions
+•	attendance_exceptions
+Dining
+•	dining_menus
+•	dining_menu_items
+•	dining_schedules
+•	dining_attendance
+•	dining_exceptions
+Notifications
+•	notifications
+•	sms_logs
+•	notification_templates
+•	notification_rules
+Security
+•	audit_logs
+________________________________________
+57. Important Leave Data Fields
+A leave record should contain at minimum:
+•	Leave ID
+•	Student ID
+•	Leave Type
+•	Request Source
+•	Requested By
+•	Reason
+•	Start Date
+•	Start Time
+•	Expected Return Date
+•	Expected Return Time
+•	Supporting Document
+•	Status
+•	Created By
+•	Approved By
+•	Approval Time
+•	Rejection Reason
+•	Actual Exit Time
+•	Actual Return Time
+•	Gate Keeper
+•	Actual Duration
+•	Late Return Flag
+________________________________________
+58. Leave State Machine
+Recommended backend states:
+DRAFT
+↓
+REQUESTED
+↓
+PENDING_DOD_APPROVAL
+↓
+Either:
+APPROVED
+or
+REJECTED
+If approved:
+APPROVED
+↓
+AWAITING_PHYSICAL_EXIT
+↓
+OUTSIDE_SCHOOL
+↓
+RETURNED
+↓
+CLOSED
+This state model is important because approval, exit and return are three different events.
+________________________________________
+59. Attendance State Machine
+Recommended:
+ATTENDANCE_WINDOW_OPEN
+↓
+BIOMETRIC_TRANSACTION_RECEIVED
+↓
+ATTENDANCE_RECORDED
+At window closure:
+ATTENDANCE_COMPLETE
+or
+ATTENDANCE_MISSING
+If missing:
+PATRON_DOD_ALERT
+↓
+1 Hour Escalation (or as per school policy)
+↓
+PARENT_ALERT
+________________________________________
+60. Dining State Machine
+DINING_SESSION_SCHEDULED
+↓
+DINING_SESSION_OPEN
+↓
+ATTENDANCE_MARKING
+↓
+DINING_SESSION_CLOSED
+↓
+MISSING_STUDENTS_IDENTIFIED
+↓
+EXCEPTION_CREATED
+________________________________________
+61. API Integration
+The Boarding Module should integrate with the existing biometric/API infrastructure.
+Since biometric devices and APIs are already available, the Boarding Module should consume existing biometric transaction data/API services rather than creating a duplicate device-management system.
+The system should map:
+Biometric Device ID → Student Biometric ID → Student → Dormitory/Boarding Profile
+The development team should ensure that duplicate biometric events do not create duplicate attendance records.
+________________________________________
+62. Real-Time Status Synchronization
+Whenever a significant event occurs, relevant modules should update automatically.
+Example:
+Student Exits
+Boarding:
+ON LEAVE
+Class:
+ON LEAVE
+Parent App:
+ON LEAVE
+Student Profile:
+ON LEAVE
+Gate:
+EXIT COMPLETED
+Student Returns
+Boarding:
+IN SCHOOL
+Parent App:
+RETURNED
+Leave:
+CLOSED
+Attendance:
+RETURN BIOMETRIC RECORDED
+________________________________________
+63. Notification Queue
+SMS sending should use a queue-based mechanism.
+The system should store:
+•	Notification type
+•	Recipient
+•	Student
+•	Trigger event
+•	Message
+•	Channel
+•	Created time
+•	Sent time
+•	Delivery status
+•	Failure reason
+This prevents the system from losing notification history.
+________________________________________
+64. Configuration Settings
+DOD should have a dedicated Boarding Configuration section.
+Settings should include:
+Attendance
+•	Start time
+•	End time
+•	Escalation period
+•	Applicable dormitories
+•	Applicable classes
+Dining
+•	Meal timings
+•	Dormitory schedule
+•	Room schedule
+•	Class schedule
+Leave
+•	Leave types
+•	Maximum duration
+•	Parent notification rules (view only )
+•	SMS rules (view only )
+•	Medical leave rules
+•	Emergency leave rules
+Security
+•	Gate exit confirmation requirement
+•	Student photo requirement
+•	Biometric return requirement
+•	Late return threshold
+________________________________________
+65. Recommended Boarding Main Menu
+The Boarding Portal should have:
+1.	Dashboard
+2.	Students
+3.	Dormitories
+4.	Rooms & Beds
+5.	Patrons / Matrons
+6.	Leave Management
+7.	Gate Exit
+8.	Current Students Outside
+9.	Boarding Attendance
+10.	Dining
+11.	Alerts & Exceptions
+12.	Reports
+13.	Configuration
+14.	Audit Logs
+________________________________________
+66. Complete Operational Workflow
+Scenario A – Student Requests Short Leave
+Student
+↓
+Patron/Matron
+↓
+Leave Request Created
+↓
+DOD
+↓
+Approve / Reject
+↓
+If Approved:
+Parent App Notification
+↓
+Patron/Matron Approval Received
+↓
+Gate Keeper Approval Available
+↓
+Gate Keeper Verifies Photograph
+↓
+CONFIRM STUDENT EXIT
+↓
+Exit Timestamp
+↓
+Student = ON LEAVE
+↓
+Parent/App/System Updated
+↓
+Student Returns
+↓
+Biometric at Gate
+↓
+Automatic Leave Closure
+↓
+Student = IN SCHOOL
+________________________________________
+67. Scenario B – Parent Requests Leave Through App
+Parent App
+↓
+DOD
+↓
+DOD Reviews
+↓
+Approve / Reject
+↓
+If Approved:
+Parent Notification
+↓
+Patron/Matron Notification
+↓
+Gate Keeper Notification
+↓
+Physical Exit Verification
+↓
+CONFIRM STUDENT EXIT
+↓
+ON LEAVE
+↓
+Biometric Return
+↓
+Automatic Closure
+________________________________________
+68. Scenario C – Parent Calls DOD
+Parent Phone Call
+↓
+DOD Creates Request
+↓
+DOD Approves
+↓
+System Notifications
+↓
+Patron/Matron
+•	
+Gate Keeper
+•	
+Parent
+↓
+Gate Verification
+↓
+CONFIRM STUDENT EXIT
+↓
+ON LEAVE
+↓
+Biometric Return
+↓
+Leave Closed
+________________________________________
+69. Scenario D – Missing Boarding Attendance
+Attendance Window Opens
+↓
+Students Scan Biometrics
+↓
+Attendance Window Closes
+↓
+System checks:
+Attendance?
+•	
+Approved Leave?
+If:
+Attendance = Yes
+→ Complete
+If:
+Attendance = No + On Leave = Yes
+→ Exclude from Missing Attendance
+If:
+Attendance = No + On Leave = No
+→ Patron/Matron + DOD Alert
+↓
+1 Hour Escalation Timer
+↓
+If still missing:
+Parent App + SMS
+________________________________________
+70. Scenario E – Medical Leave
+Student/Parent Request
+↓
+DOD
+↓
+Medical Leave Approved
+↓
+Immediately:
+Parent App Notification
+•	
+Parent SMS
+↓
+Patron/Matron Notification
+↓
+Gate Keeper Authorization
+↓
+Physical Exit
+↓
+ON MEDICAL LEAVE
+↓
+Biometric Return
+↓
+Automatic Leave Closure
+________________________________________
+71. Scenario F – Dining Attendance
+DOD Defines Dining Schedule
+↓
+Accounts Department Defines Menu
+↓
+Dining Session Starts
+↓
+Patron/Matron Views Assigned Students
+↓
+Manual Dining Attendance
+↓
+System compares:
+Expected Students
+vs.
+Present Students
+↓
+Students on approved leave excluded
+↓
+Remaining missing students:
+Dining Exception
+↓
+Patron/Matron + DOD Notification
+________________________________________
+72. Critical Business Rules
+The following rules must be treated as mandatory development requirements:
+1.	DOD is the final operational authority for boarding leave.
+2.	Patron/Matron is the first operational communication point for student-requested leave.
+3.	Multiple Patrons/Matrons must be supported.
+4.	Patron/Matron access must be dormitory-based.
+5.	A Patron/Matron must only see assigned dormitory students.
+6.	Student photograph is mandatory for boarding students.
+7.	Gate Keeper must verify photograph before exit.
+8.	Gate Keeper cannot approve leave.
+9.	Physical exit must be separately confirmed.
+10.	Exit confirmation must create an immutable timestamped event.
+11.	Approved leave alone must not mark a student as physically outside.
+12.	Student must become “On Leave” only after physical exit confirmation.
+13.	Return must normally be automatic through biometric attendance.
+14.	Manual leave closure should not be part of the normal workflow.
+15.	DOD controls boarding attendance timing.
+16.	DOD controls dining timing.
+17.	Boarding attendance must operate within a configured time window.
+18.	Last valid biometric event within the window is the final attendance event.
+19.	Students on approved leave must be excluded from missing attendance.
+20.	Missing attendance initially alerts Patron/Matron and DOD.
+21.	Parent SMS must be delayed until the configured escalation period, currently one hour.
+22.	Medical leave approval must immediately trigger Parent App + SMS.
+23.	Long leave approval must trigger Parent App + SMS.
+24.	All critical actions must be audited.
+25.	Biometric raw transactions must be preserved.
+26.	Existing biometric APIs/devices should be reused.
+27.	Boarding status must synchronize with the wider School Management System.
+28.	Dining attendance must respect current student leave status.
+29.	Parent must only see their own children.
+30.	Gate Keeper must only see information required for security/exit operations.
+________________________________________
+73. Development Acceptance Criteria
+The redesigned Boarding Module will be considered functionally complete when:
+Leave
+•	Student can request leave through Patron/Matron.
+•	Parent can request leave through mobile application.
+•	DOD can create leave on behalf of parent.
+•	DOD can approve/reject leave.
+•	Leave types are configurable.
+•	Medical leave has separate notification rules.
+•	Long leave sends SMS.
+•	Parent receives application notifications.
+Dormitory
+•	Multiple dormitories are supported.
+•	Multiple Patrons/Matrons are supported.
+•	Patrons/Matrons can be assigned to multiple dormitories.
+•	Student visibility is restricted by assignment.
+•	Dormitory → Room → Bed assignment is supported.
+Security
+•	Boarding student photograph is mandatory.
+•	Gate Keeper can view photograph.
+•	Gate Keeper can only process approved leave.
+•	Gate Keeper confirms physical exit.
+•	Exit timestamp is automatically recorded.
+•	Student becomes On Leave only after exit confirmation.
+•	Return is automatically detected through biometric attendance.
+•	Leave closes automatically on return.
+Attendance
+•	DOD can configure attendance start time.
+•	DOD can configure attendance end time.
+•	Last valid biometric attendance is counted.
+•	Missing attendance is automatically identified.
+•	Students on approved leave are excluded.
+•	Patron/Matron receives missing attendance alert.
+•	DOD receives missing attendance alert.
+•	Parent receives notification + SMS after one-hour escalation.
+Dining
+•	Daily menu is supported.
+•	Weekly menu is supported.
+•	Monthly menu is supported.
+•	Term menu is supported.
+•	DOD can configure dining timings.
+•	Dining timing can be assigned by dormitory.
+•	Dining timing can be assigned by room.
+•	Dining timing can be assigned by class.
+•	Patron/Matron can mark dining attendance.
+•	Students on approved leave are excluded.
+•	Dining exceptions are generated.
+Audit
+•	Leave actions are audited.
+•	Approval/rejection is audited.
+•	Gate exit is audited.
+•	Biometric return is recorded.
+•	Manual attendance is audited.
+•	Configuration changes are audited.
+•	Notification history is retained.
+________________________________________
+74. Recommended Final Architecture
+The Boarding Module should be designed around the following principle:
+DOD = Operational Control
+Patron/Matron = Dormitory Operations
+Gate Keeper = Physical Security & Exit Verification
+Biometric System = Physical Presence Verification
+Dining Department = Meal/Menu Management
+Parent App = Parent Communication & Request Channel
+School Administration = Oversight & Reporting
+This separation of responsibilities is critical.
+The system should not allow one role to perform the complete workflow alone unless that role is specifically authorized by the DOD's permission model.
+________________________________________
+75. Core Design Principle
+The Boarding Module should always distinguish between:
+What the system says should happen
+and
+What physically happened.
+For example:
+Leave Approved does not mean the student has left.
+Attendance Expected does not mean the student is present.
+Return Expected does not mean the student has returned.
+The system must confirm physical events through:
+•	Gate confirmation for exit
+•	Biometric transaction for return
+•	Biometric transaction for boarding attendance
+•	Authorized manual exception only where necessary
+This principle will make the Boarding Module much more reliable from both an operational and security perspective.
+________________________________________
+76. Final End-to-End Boarding Lifecycle
+The complete boarding lifecycle should be:
+Student Admission
+↓
+Boarding Assignment
+↓
+Dormitory
+↓
+Room
+↓
+Bed
+↓
+Patron/Matron Assignment
+↓
+Biometric Registration
+↓
+Mandatory Student Photograph
+↓
+Daily Boarding Operations
+↓
+Boarding Attendance
+↓
+Dining Attendance
+↓
+Leave Request
+↓
+DOD Approval
+↓
+Gate Verification
+↓
+Physical Exit
+↓
+ON LEAVE
+↓
+Biometric Return
+↓
+AUTOMATIC LEAVE CLOSURE
+↓
+IN SCHOOL
+↓
+Boarding Attendance
+↓
+Daily Cycle Repeats
+________________________________________
+77. Conclusion
+The redesigned Boarding Management Module should function as a centralized operational control system rather than simply a student attendance and leave feature.
+The Director of Discipline (DOD) remains the central authority for boarding operations. Patrons and Matrons manage their assigned dormitories, while the Gate Keeper controls the physical exit process. Biometric devices provide objective physical-presence data, and the Parent Mobile Application/SMS system provides communication with parents.
+The most important architectural principle is the separation of:
+Request → Approval → Physical Exit → Leave Status → Physical Return → Automatic Closure
+Similarly, boarding attendance must follow:
+Attendance Window → Biometric Presence → Missing Student Detection → Internal Escalation → Parent Escalation
+This structure provides the school with:
+•	Better student security
+•	Clear accountability
+•	Accurate boarding records
+•	Real-time student status
+•	Controlled leave management
+•	Reliable attendance
+•	Better parent communication
+•	Full operational auditability
+•	Reduced manual intervention
+•	Clear role separation
+•	Scalable support for multiple dormitories and boarding staff
+The existing generic Boarding module should therefore be redesigned around these workflows and business rules rather than simply adding individual features on top of the current implementation.
+
+Scope & Compatibility Statement
+This document applies exclusively to the Boarding Management Module and its related workflows. The requirements and features defined in this document must not modify, replace, remove, or negatively affect any existing roles, users, dashboards, permissions, workflows, APIs, modules, or system functionality outside the Boarding Module. All existing users and roles must continue performing their current responsibilities as they do today. Where an existing user or role is identified as being operationally related to Boarding, the Boarding-specific functions defined in this document shall be treated as additional responsibilities/features for the Boarding Module only, and must not be considered a replacement for their existing system functionality.
+
