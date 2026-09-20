@@ -41,7 +41,7 @@ if ($dotnet) {
 $exe = Join-Path $fk 'bin\Release\net8.0\FKBridge.exe'
 if (Test-Path $exe) {
     Write-Info "Starting FKBridge: $exe"
-    if ($DryRun) { Write-Info "Dry-run: would start $exe"; Write-OK 'Dry-run: FKBridge start skipped' } else { $p = Start-Process -FilePath $exe -PassThru -NoNewWindow -RedirectStandardOutput $LOG_FILE -RedirectStandardError $LOG_FILE; Start-Sleep 1; if ($p -and -not $p.HasExited) { Write-OK "FKBridge running pid=$($p.Id)" } else { Write-Warn 'FKBridge failed to start' } }
+    if ($DryRun) { Write-Info "Dry-run: would start $exe"; Write-OK 'Dry-run: FKBridge start skipped' } else { $p = Start-Process -FilePath $exe -PassThru -NoNewWindow; Start-Sleep 1; if ($p -and -not $p.HasExited) { Write-OK "FKBridge running pid=$($p.Id)" } else { Write-Warn 'FKBridge failed to start' } }
 } else {
     Write-Warn "FKBridge.exe not found at $exe"
 }
