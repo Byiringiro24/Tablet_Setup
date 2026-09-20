@@ -948,6 +948,33 @@ app.post('/api/device/connect-saved', async (req, res) => {
   apiResult(res, result);
 });
 
+// Persist device configuration without attempting a TCP connect
+app.post('/api/device/save-config', (req, res) => {
+  try {
+    const {
+      ipAddress = '', port = 5005, license = 1261, deviceId = '', netPassword = 0, protocolType = -1, timeoutMs = 3000,
+    } = req.body || {};
+    const cfg = {
+      ...(activeDeviceConfig || loadDeviceConfig() || {}),
+      ipAddress: String(ipAddress || '').trim(),
+      port: Number(port) || 5005,
+      license: Number(license) || 1261,
+      deviceId: String(deviceId || '').trim(),
+      netPassword: Number(netPassword) || 0,
+      protocolType: protocolType === null || protocolType === undefined ? -1 : Number(protocolType),
+      timeoutMs: Number(timeoutMs) > 0 ? Number(timeoutMs) : 3000,
+    };
+    if (cfg.ipAddress) {
+      saveDeviceConfig(cfg);
+      activeDeviceConfig = cfg;
+    }
+    res.json({ success: true, data: cfg });
+  } catch (err) {
+    console.error('Failed to save device config via API', err);
+    res.status(500).json({ success: false, error: 'Failed to save device config' });
+  }
+});
+
 app.post('/api/device/disconnect', async (req, res) => {
   const result = await sendCommand('DISCONNECT');
   currentDevice = null;
