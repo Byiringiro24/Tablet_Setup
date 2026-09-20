@@ -15,9 +15,10 @@ let   DEV_PASSWORD    = process.env.DEV_PASSWORD  || 'admin1234';
 const VPN_ALLOWED_IPS    = process.env.VPN_ALLOWED_IPS    || '10.0.0.0/16';
 const WG_SERVER_ENDPOINT = process.env.WG_SERVER_ENDPOINT || '169.58.124.150:51820';
 const WG_DNS             = process.env.WG_DNS             || '1.1.1.1';
-const WG_EXE             = 'C:\\Program Files\\WireGuard\\wg.exe';
-const WIREGUARD_TUNNEL_NAME = 'EcareAfrica';
-const WG_TUNNEL_DIR      = `${process.env.PROGRAMDATA || 'C:\\ProgramData'}\\WireGuard`;
+// WireGuard configuration (configurable via ENV or UI)
+const WG_EXE             = process.env.WG_EXE || 'C:\\Program Files\\WireGuard\\wg.exe';
+const WIREGUARD_TUNNEL_NAME = process.env.WG_TUNNEL_NAME || 'EcareAfrica';
+const WG_TUNNEL_DIR      = process.env.WG_TUNNEL_DIR || `${process.env.PROGRAMDATA || 'C:\\ProgramData'}\\WireGuard`;
 
 async function getWireGuardRuntimeStatus() {
   const wgExeExists = fsSync.existsSync(WG_EXE);
@@ -346,7 +347,7 @@ function rememberLatestDeviceIp(ipAddress, port = 5005, extra = {}) {
   return nextConfig;
 }
 
-function ensureWireGuardConfigFile({ privateKey, serverPublicKey, vpnIp = '10.0.0.2', dns = WG_DNS, serverEndpoint = WG_SERVER_ENDPOINT, allowedIPs = VPN_ALLOWED_IPS } = {}) {
+function ensureWireGuardConfigFile({ privateKey, serverPublicKey, vpnIp = '10.0.0.2', dns = WG_DNS, serverEndpoint = WG_SERVER_ENDPOINT, allowedIPs = VPN_ALLOWED_IPS, tunnelName = WIREGUARD_TUNNEL_NAME } = {}) {
   if (!privateKey || !serverPublicKey) {
     throw new Error('Private key and server public key are required to build the WireGuard config.');
   }
@@ -366,8 +367,8 @@ function ensureWireGuardConfigFile({ privateKey, serverPublicKey, vpnIp = '10.0.
     'PersistentKeepalive = 25',
   ].join('\n');
 
-  const confPath = path.join(WG_TUNNEL_DIR, `${WIREGUARD_TUNNEL_NAME}.conf`);
-  const tempConfPath = path.join(process.env.TEMP || 'C:\\Temp', `${WIREGUARD_TUNNEL_NAME}.conf`);
+  const confPath = path.join(WG_TUNNEL_DIR, `${tunnelName}.conf`);
+  const tempConfPath = path.join(process.env.TEMP || 'C:\\Temp', `${tunnelName}.conf`);
 
   if (!fsSync.existsSync(confPath) || !fsSync.readFileSync(confPath, 'utf8').includes('PublicKey = ')) {
     fsSync.writeFileSync(confPath, Buffer.from(confContent, 'utf8'));
@@ -1327,7 +1328,8 @@ app.post('/api/wireguard/generate-keys', async (req, res) => {
 // Body: { serverPublicKey, serverEndpoint, vpnIp, dns? }
 // The super admin pastes the serverPublicKey (from the server web UI) and the assigned VPN IP.
 app.post('/api/wireguard/install', async (req, res) => {
-  const { serverPublicKey, serverEndpoint, vpnIp, dns = '1.1.1.1' } = req.body || {};
+  const { serverPublicKey, serverEndpoint, vpnIp, dns = '1.1.1.1', tunnelName } = req.body || {};
+  const effectiveTunnelName = tunnelName || WIREGUARD_TUNNEL_NAME;
 
   if (!serverPublicKey) return res.status(400).json({ success: false, error: 'serverPublicKey is required' });
   if (!serverEndpoint)  return res.status(400).json({ success: false, error: 'serverEndpoint is required (e.g. 169.58.124.150:51820)' });
@@ -1360,6 +1362,7 @@ app.post('/api/wireguard/install', async (req, res) => {
     dns: dns || WG_DNS,
     serverEndpoint,
     allowedIPs: VPN_ALLOWED_IPS,
+    tunnelName: effectiveTunnelName,
   });
 
   // Install tunnel via WireGuard CLI (requires admin ΓÇö bridge must run as Administrator)
@@ -1375,7 +1378,7 @@ app.post('/api/wireguard/install', async (req, res) => {
     await new Promise(r => setTimeout(r, 3000));
 
     // Verify tunnel is active
-    const show = await runWg('show', WIREGUARD_TUNNEL_NAME).catch(() => '');
+    const show = await runWg('show', effectiveTunnelName).catch(() => '');
     const active = show.includes('interface:') || show.includes('listening port');
 
     res.json({
@@ -1384,7 +1387,7 @@ app.post('/api/wireguard/install', async (req, res) => {
       vpnIp,
       confPath: tempConfPath,
       message: active
-        ? `WireGuard tunnel "${WIREGUARD_TUNNEL_NAME}" is active on ${vpnIp}`
+        ? `WireGuard tunnel "${effectiveTunnelName}" is active on ${vpnIp}`
         : `Tunnel installed but not yet active. If it stays inactive, open WireGuard app and import: ${tempConfPath}`,
     });
   } catch (err) {
