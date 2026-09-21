@@ -51,15 +51,33 @@ export default function GateKeeperPanel({ onClose }: { onClose: () => void }) {
     finally { setLoginBusy(false); }
   };
 
+  const normalizeExit = (item: any): ApprovedExit => {
+    const student = item?.student ?? null;
+    return {
+      ...item,
+      id: item?.id ?? item?.leave_id ?? item?.leaveId ?? "",
+      leave_id: item?.leave_id ?? item?.id ?? item?.leaveId ?? "",
+      student_id: item?.student_id ?? student?.id ?? "",
+      leave_state: item?.leave_state ?? item?.status ?? "",
+      student: student ? {
+        ...student,
+        id: student.id ?? student.student_id ?? "",
+      } : null,
+    } as ApprovedExit;
+  };
+
   const loadExits = async () => {
     setLoading(true);
     try {
       const today = new Date().toISOString().slice(0, 10);
       const r = await schoolApi.getApprovedExits(today);
-      const data = (r.data as any)?.data ?? r.data ?? [];
-      setExits(Array.isArray(data) ? data : []);
-    } catch (e: any) { toast.error(e?.response?.data?.error ?? "Failed to load exits"); }
-    finally { setLoading(false); }
+      const payload = (r.data as any)?.data ?? r.data ?? [];
+      const data = Array.isArray(payload) ? payload.map(normalizeExit) : [];
+      setExits(data);
+    } catch (e: any) {
+      const message = e?.response?.data?.error ?? e?.response?.data?.message ?? "Failed to load exits";
+      toast.error(message);
+    } finally { setLoading(false); }
   };
 
   const filtered = exits.filter(e => {
