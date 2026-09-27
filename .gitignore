@@ -1,0 +1,30 @@
+# Build artifacts
+FKBridge/bin/
+FKBridge/obj/
+
+# Node
+backend/node_modules/
+frontend/node_modules/
+frontend/.next/
+frontend/.turbo/
+
+# Local data (tablet-specific, never commit)
+backend/data/device-config.json
+backend/data/wireguard-private.key
+backend/data/wireguard-public.key
+backend/data/attendance-settings.json
+backend/known-good-commit.txt
+
+# Logs
+backend/logs/
+*.log
+
+# Environment
+.env
+.env.local
+.env.production
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
