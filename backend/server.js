@@ -1119,6 +1119,31 @@ app.post('/api/device/push-students', async (req, res) => {
     if (result.success) pushed.push(student); else failed.push({ student, error: result.error, code: result.code });
   }
   if (pushed.length) await refreshUsersCache().catch(() => null);
+
+  // Download and cache photos for successfully pushed students.
+  // Photos are stored locally so they display instantly on the attendance flash card
+  // even without an active internet connection.
+  if (pushed.length > 0) {
+    const token = schoolAuthToken || null;
+    const photoStudents = pushed
+      .filter((s) => s.photoUrl || s.photo_url)
+      .map((s) => ({
+        id: s.studentId || s.id,
+        student_id: s.studentId || s.id,
+        photo_url: s.photoUrl || s.photo_url || '',
+        photoUrl:  s.photoUrl || s.photo_url || '',
+      }));
+    if (photoStudents.length > 0) {
+      // Fire and forget — don't block the push response
+      syncRoomPhotoCache({
+        roomKey:      'device-push',
+        deviceId:     currentDevice?.deviceId || 'tablet',
+        studentsList: photoStudents,
+        token,
+      }).catch((err) => console.warn('[PhotoCache] Photo sync failed after push:', err?.message));
+    }
+  }
+
   res.json({ success: failed.length === 0, data: { pushed: pushed.length, failed: failed.length, failures: failed }, error: failed[0]?.error || null });
 });
 
