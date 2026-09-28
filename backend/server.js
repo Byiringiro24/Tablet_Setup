@@ -213,6 +213,7 @@ function sseEmit(event, data) {
 
 // Auto-log-poll state
 let logPollTimer = null;
+let logPollStartedAt = 0;   // epoch ms when current poll session started
 const seenLogIds = new Set();
 let pollBusy = false;   // prevent overlapping polls if device is slow
 
@@ -220,6 +221,8 @@ function startLogPoll() {
   if (logPollTimer) return;
   seenLogIds.clear();   // always reset on new connection so first poll seeds correctly
   pollBusy = false;
+  // Record when the poll started so we can tell apart pre-existing vs new logs
+  logPollStartedAt = Date.now();
   logPollTimer = setInterval(runLogPoll, 2000);
   console.log('Log auto-poll started (every 2s)');
 }
@@ -228,6 +231,7 @@ function stopLogPoll() {
   if (logPollTimer) { clearInterval(logPollTimer); logPollTimer = null; }
   seenLogIds.clear();
   pollBusy = false;
+  logPollStartedAt = 0;
 }
 
 async function runLogPoll() {
@@ -251,15 +255,34 @@ async function runLogPoll() {
     }
     const rawLogs = Array.isArray(result.data?.logs) ? result.data.logs : [];
 
-    // On first poll after connect, seed ALL existing logs ├óΓé¼ΓÇ¥ never flash old attendance
+    // On first poll after connect, seed ALL logs that existed BEFORE we started polling
+    // as "already seen" so they don't flash as new.
+    // IMPORTANT: any log whose timestamp is >= logPollStartedAt may be a real new scan
+    // that happened in the ~2s window between startLogPoll() and the first poll execution.
+    // Those MUST be treated as fresh and emitted as 'attendance' events.
     if (seenLogIds.size === 0 && rawLogs.length > 0) {
       const getLogKey = (raw) => raw.id || `${raw.userId}-${raw.timestamp}`;
-      rawLogs.forEach((raw) => seenLogIds.add(getLogKey(raw)));
+      const startMs = logPollStartedAt;
+      const preExisting = rawLogs.filter((raw) => {
+        const ts = raw.timestamp ? new Date(raw.timestamp).getTime() : 0;
+        return ts < startMs;
+      });
+      const postConnect = rawLogs.filter((raw) => {
+        const ts = raw.timestamp ? new Date(raw.timestamp).getTime() : 0;
+        return ts >= startMs;
+      });
+      // Mark all pre-existing logs as already seen
+      preExisting.forEach((raw) => seenLogIds.add(getLogKey(raw)));
       logsCache = rawLogs;
-      // Pull users then emit init with resolved names for sidebar
       await refreshUsersCache().catch(() => null);
-      sseEmit('init', rawLogs.map(attendanceFromLog));
-      console.log(`Log poll: seeded ${rawLogs.length} existing log(s) ├óΓé¼ΓÇ¥ no flash`);
+      // Emit pre-existing as 'init' (sidebar list only, no flash)
+      sseEmit('init', preExisting.map(attendanceFromLog));
+      console.log(`Log poll: seeded ${preExisting.length} old log(s); ${postConnect.length} post-connect log(s) will flash`);
+      if (postConnect.length > 0) {
+        // These are real new scans — mark seen and flash them
+        postConnect.forEach((raw) => seenLogIds.add(getLogKey(raw)));
+        sseEmit('attendance', postConnect.map(attendanceFromLog));
+      }
       pollBusy = false;
       return;
     }
@@ -688,20 +711,30 @@ function normalizeStudent(input) {
   const studentDeviceId = String(input.studentDeviceId || input.deviceUserId || input.enrollmentId || input.id || '').trim();
   const generatedSuffix = studentDeviceId || Date.now().toString().slice(-6);
   const studentId = String(input.studentId || `RW-${generatedSuffix}`).trim().toUpperCase();
+  // Build full name: support both single 'name' field (local registration)
+  // and first_name + last_name (school API response)
+  const fullName = String(
+    input.name ||
+    ((input.first_name || input.last_name)
+      ? `${input.first_name || ''} ${input.last_name || ''}`.trim()
+      : '')
+  ).trim();
   return {
     id: studentId,
     studentId,
-    name: String(input.name || '').trim(),
-    className: String(input.className || '').trim(),
-    section: String(input.section || '').trim(),
+    name: fullName,
+    firstName: String(input.first_name || input.firstName || '').trim(),
+    lastName: String(input.last_name || input.lastName || '').trim(),
+    className: String(input.className || input.class_name || '').trim(),
+    section: String(input.section || input.section_name || '').trim(),
     studentDeviceId,
     deviceUserId: studentDeviceId,
     assignedDeviceId: input.assignedDeviceId || currentDevice?.deviceId || '',
     parentName: input.parentName || '',
-    parentPhone: input.parentPhone || '',
+    parentPhone: input.parentPhone || input.parent_phone || '',
     phone: input.phone || '',
     email: input.email || '',
-    photoUrl: input.photoUrl || input.photo_url || '',   // ├óΓÇá┬É stored for display on scan
+    photoUrl: input.photoUrl || input.photo_url || '',   // stored for display on scan
     createdAt: input.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -740,11 +773,20 @@ function attendanceFromLog(log) {
   const deviceUser = usersCache.find((item) => item.userId === log.userId);
   const resolved = resolveAttendanceStatus(log);
   const stableId = log.id || `${log.userId}-${log.timestamp}`;
+  // Prefer the stored full name; fall back to first+last if available, then device name
+  const studentName = student?.name
+    || (student?.firstName && student?.lastName
+        ? `${student.firstName} ${student.lastName}`.trim()
+        : null)
+    || deviceUser?.name
+    || `User ${log.userId}`;
   return {
     id: stableId,
     studentId: student?.studentId || `RW-${log.userId}`,
     studentDeviceId: log.userId,
-    studentName: student?.name || deviceUser?.name || `User ${log.userId}`,
+    studentName,
+    firstName: student?.firstName || '',
+    lastName:  student?.lastName  || '',
     className: student?.className || '',
     section: student?.section || '',
     deviceId: currentDevice?.deviceId || currentDevice?.ipAddress || 'FK_DEVICE',
