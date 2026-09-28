@@ -5,6 +5,12 @@ const path = require('path');
 const readline = require('readline');
 const fs = require('fs');
 const fsSync = fs;  // alias used in WireGuard routes for clarity
+const {
+  buildPhotoCacheManifest,
+  shouldRefreshPhotoCache,
+  resolveLocalPhotoPath,
+  savePhotoToCache,
+} = require('./photo-cache');
 
 // ΓöÇΓöÇ Environment constants ΓÇö declared here so every function below can use them ΓöÇΓöÇ
 // These were previously declared mid-file, causing Temporal Dead Zone ReferenceErrors.
@@ -119,6 +125,46 @@ let usersCache = [];
 let logsCache = [];
 let students = loadStudents();
 let attendanceSettings = loadAttendanceSettings();
+const PHOTO_CACHE_ROOT = path.join(__dirname, 'cache', 'photos');
+
+function getRoomPhotoRoot(roomKey = 'all-rooms') {
+  const safeRoom = String(roomKey || 'all-rooms').trim().replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, '-');
+  return path.join(PHOTO_CACHE_ROOT, safeRoom || 'all-rooms');
+}
+
+async function syncRoomPhotoCache({ roomKey = 'all-rooms', deviceId = 'tablet', studentsList = [], token = null } = {}) {
+  const manifest = buildPhotoCacheManifest(studentsList, roomKey, deviceId, PHOTO_CACHE_ROOT);
+  let syncedCount = 0;
+  let refreshedCount = 0;
+  let missingCount = 0;
+
+  for (const entry of manifest) {
+    if (!entry.photoUrl) continue;
+    const localPath = resolveLocalPhotoPath(entry.studentId, roomKey, PHOTO_CACHE_ROOT);
+    const stat = fs.existsSync(localPath) ? fs.statSync(localPath) : null;
+    const stale = !stat || shouldRefreshPhotoCache({ updatedAt: stat ? stat.mtimeMs : 0 }, Date.now());
+
+    if (!fs.existsSync(localPath) || stale) {
+      const outcome = await savePhotoToCache(entry.photoUrl, localPath, token);
+      if (outcome && outcome.ok) {
+        syncedCount += 1;
+        if (stat) refreshedCount += 1;
+      } else {
+        missingCount += 1;
+      }
+    }
+  }
+
+  return {
+    roomKey: String(roomKey || 'all-rooms'),
+    deviceId: String(deviceId || 'tablet'),
+    total: manifest.length,
+    syncedCount,
+    refreshedCount,
+    missingCount,
+    manifest,
+  };
+}
 
 // Auto-connect state
 const deviceConfigFile = path.join(dataDir, 'device-config.json');
@@ -167,6 +213,7 @@ function sseEmit(event, data) {
 
 // Auto-log-poll state
 let logPollTimer = null;
+let logPollStartedAt = 0;   // epoch ms when current poll session started
 const seenLogIds = new Set();
 let pollBusy = false;   // prevent overlapping polls if device is slow
 
@@ -174,6 +221,8 @@ function startLogPoll() {
   if (logPollTimer) return;
   seenLogIds.clear();   // always reset on new connection so first poll seeds correctly
   pollBusy = false;
+  // Record when the poll started so we can tell apart pre-existing vs new logs
+  logPollStartedAt = Date.now();
   logPollTimer = setInterval(runLogPoll, 2000);
   console.log('Log auto-poll started (every 2s)');
 }
@@ -182,6 +231,7 @@ function stopLogPoll() {
   if (logPollTimer) { clearInterval(logPollTimer); logPollTimer = null; }
   seenLogIds.clear();
   pollBusy = false;
+  logPollStartedAt = 0;
 }
 
 async function runLogPoll() {
@@ -205,15 +255,34 @@ async function runLogPoll() {
     }
     const rawLogs = Array.isArray(result.data?.logs) ? result.data.logs : [];
 
-    // On first poll after connect, seed ALL existing logs ├óΓé¼ΓÇ¥ never flash old attendance
+    // On first poll after connect, seed ALL logs that existed BEFORE we started polling
+    // as "already seen" so they don't flash as new.
+    // IMPORTANT: any log whose timestamp is >= logPollStartedAt may be a real new scan
+    // that happened in the ~2s window between startLogPoll() and the first poll execution.
+    // Those MUST be treated as fresh and emitted as 'attendance' events.
     if (seenLogIds.size === 0 && rawLogs.length > 0) {
       const getLogKey = (raw) => raw.id || `${raw.userId}-${raw.timestamp}`;
-      rawLogs.forEach((raw) => seenLogIds.add(getLogKey(raw)));
+      const startMs = logPollStartedAt;
+      const preExisting = rawLogs.filter((raw) => {
+        const ts = raw.timestamp ? new Date(raw.timestamp).getTime() : 0;
+        return ts < startMs;
+      });
+      const postConnect = rawLogs.filter((raw) => {
+        const ts = raw.timestamp ? new Date(raw.timestamp).getTime() : 0;
+        return ts >= startMs;
+      });
+      // Mark all pre-existing logs as already seen
+      preExisting.forEach((raw) => seenLogIds.add(getLogKey(raw)));
       logsCache = rawLogs;
-      // Pull users then emit init with resolved names for sidebar
       await refreshUsersCache().catch(() => null);
-      sseEmit('init', rawLogs.map(attendanceFromLog));
-      console.log(`Log poll: seeded ${rawLogs.length} existing log(s) ├óΓé¼ΓÇ¥ no flash`);
+      // Emit pre-existing as 'init' (sidebar list only, no flash)
+      sseEmit('init', preExisting.map(attendanceFromLog));
+      console.log(`Log poll: seeded ${preExisting.length} old log(s); ${postConnect.length} post-connect log(s) will flash`);
+      if (postConnect.length > 0) {
+        // These are real new scans — mark seen and flash them
+        postConnect.forEach((raw) => seenLogIds.add(getLogKey(raw)));
+        sseEmit('attendance', postConnect.map(attendanceFromLog));
+      }
       pollBusy = false;
       return;
     }
@@ -642,20 +711,30 @@ function normalizeStudent(input) {
   const studentDeviceId = String(input.studentDeviceId || input.deviceUserId || input.enrollmentId || input.id || '').trim();
   const generatedSuffix = studentDeviceId || Date.now().toString().slice(-6);
   const studentId = String(input.studentId || `RW-${generatedSuffix}`).trim().toUpperCase();
+  // Build full name: support both single 'name' field (local registration)
+  // and first_name + last_name (school API response)
+  const fullName = String(
+    input.name ||
+    ((input.first_name || input.last_name)
+      ? `${input.first_name || ''} ${input.last_name || ''}`.trim()
+      : '')
+  ).trim();
   return {
     id: studentId,
     studentId,
-    name: String(input.name || '').trim(),
-    className: String(input.className || '').trim(),
-    section: String(input.section || '').trim(),
+    name: fullName,
+    firstName: String(input.first_name || input.firstName || '').trim(),
+    lastName: String(input.last_name || input.lastName || '').trim(),
+    className: String(input.className || input.class_name || '').trim(),
+    section: String(input.section || input.section_name || '').trim(),
     studentDeviceId,
     deviceUserId: studentDeviceId,
     assignedDeviceId: input.assignedDeviceId || currentDevice?.deviceId || '',
     parentName: input.parentName || '',
-    parentPhone: input.parentPhone || '',
+    parentPhone: input.parentPhone || input.parent_phone || '',
     phone: input.phone || '',
     email: input.email || '',
-    photoUrl: input.photoUrl || input.photo_url || '',   // ├óΓÇá┬É stored for display on scan
+    photoUrl: input.photoUrl || input.photo_url || '',   // stored for display on scan
     createdAt: input.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -694,11 +773,20 @@ function attendanceFromLog(log) {
   const deviceUser = usersCache.find((item) => item.userId === log.userId);
   const resolved = resolveAttendanceStatus(log);
   const stableId = log.id || `${log.userId}-${log.timestamp}`;
+  // Prefer the stored full name; fall back to first+last if available, then device name
+  const studentName = student?.name
+    || (student?.firstName && student?.lastName
+        ? `${student.firstName} ${student.lastName}`.trim()
+        : null)
+    || deviceUser?.name
+    || `User ${log.userId}`;
   return {
     id: stableId,
     studentId: student?.studentId || `RW-${log.userId}`,
     studentDeviceId: log.userId,
-    studentName: student?.name || deviceUser?.name || `User ${log.userId}`,
+    studentName,
+    firstName: student?.firstName || '',
+    lastName:  student?.lastName  || '',
     className: student?.className || '',
     section: student?.section || '',
     deviceId: currentDevice?.deviceId || currentDevice?.ipAddress || 'FK_DEVICE',
@@ -1817,19 +1905,55 @@ app.get('/api/school/boarding/sessions/:id', requireSchoolToken, async (req, res
 app.get('/api/school/photo', async (req, res) => {
   const url = req.query.url;
   if (!url) return res.status(400).json({ error: 'url param required' });
-  // Use stored school token (works for img src calls that can't set headers)
+
+  const roomKey = String(req.query.roomKey || req.query.room_id || req.query.dormitory_id || req.query.room || 'all-rooms');
+  const studentId = String(req.query.studentId || req.query.student_id || 'unknown-student');
   const token = req.headers['authorization']?.replace('Bearer ', '') || schoolAuthToken;
+
+  const localPath = resolveLocalPhotoPath(studentId, roomKey, PHOTO_CACHE_ROOT);
+  const localExists = fs.existsSync(localPath);
+
+  if (localExists) {
+    const stat = fs.statSync(localPath);
+    const isFresh = !shouldRefreshPhotoCache({ updatedAt: stat.mtimeMs }, Date.now());
+    if (isFresh) {
+      res.set('Content-Type', 'image/jpeg');
+      res.set('Cache-Control', 'public, max-age=300');
+      return res.sendFile(localPath);
+    }
+  }
+
   try {
     const headers = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
     const photoRes = await fetch(url, { headers });
-    if (!photoRes.ok) return res.status(photoRes.status).send('Not found');
+    if (!photoRes.ok) {
+      if (localExists) return res.sendFile(localPath);
+      return res.status(photoRes.status).send('Not found');
+    }
+    const buffer = Buffer.from(await photoRes.arrayBuffer());
+    try { fs.mkdirSync(path.dirname(localPath), { recursive: true }); fs.writeFileSync(localPath, buffer); } catch {}
     res.set('Content-Type', photoRes.headers.get('content-type') || 'image/jpeg');
-    res.set('Cache-Control', 'public, max-age=3600');
-    const buffer = await photoRes.arrayBuffer();
-    res.send(Buffer.from(buffer));
+    res.set('Cache-Control', 'public, max-age=300');
+    return res.send(buffer);
   } catch (err) {
+    if (localExists) return res.sendFile(localPath);
     res.status(502).send('Photo fetch failed');
+  }
+});
+
+app.post('/api/school/photos/sync-room', async (req, res) => {
+  try {
+    const { roomKey = 'all-rooms', deviceId = 'tablet', students: studentsList = [], token } = req.body || {};
+    const result = await syncRoomPhotoCache({
+      roomKey,
+      deviceId,
+      studentsList,
+      token: token || schoolAuthToken,
+    });
+    res.json({ success: true, ...result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error?.message || 'Photo sync failed' });
   }
 });
 

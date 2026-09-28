@@ -56,10 +56,15 @@ export default function ManualAttendancePanel({ onClose }: { onClose: () => void
         else params.dormitory_id = selectedFilter;
         const r = await schoolApi.getStudents(params);
         const list: SchoolStudent[] = (r.data as any)?.data ?? r.data ?? [];
-        setStudents(Array.isArray(list) ? list : []);
+        const nextStudents = Array.isArray(list) ? list : [];
+        setStudents(nextStudents);
         const init: Record<string, AttendanceStatus> = {};
-        (Array.isArray(list) ? list : []).forEach(s => { init[s.id] = "present"; });
+        nextStudents.forEach(s => { init[s.id] = "present"; });
         setAttendance(init);
+
+        if (nextStudents.length > 0) {
+          void schoolApi.syncRoomPhotos(nextStudents, selectedFilter, 'tablet-local').catch(() => undefined);
+        }
       } catch { toast.error("Failed to load students"); }
       finally { setLoading(false); }
     };
@@ -199,7 +204,10 @@ export default function ManualAttendancePanel({ onClose }: { onClose: () => void
             {filtered.map(s => {
               const status = attendance[s.id] ?? "present";
               const isPresent = status === "present";
-              const photoSrc = s.photo_url ? schoolApi.photoUrl(s.photo_url) : null;
+              const photoSrc = s.photo_url ? schoolApi.photoUrl(s.photo_url, {
+                studentId: s.id,
+                roomKey: selectedFilter || 'all-rooms',
+              }) : null;
               return (
                 <button key={s.id} onClick={() => toggle(s.id)}
                   className={`flex items-center gap-3 rounded-2xl border p-4 text-left transition active:scale-95 touch-manipulation ${

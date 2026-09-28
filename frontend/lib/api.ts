@@ -130,6 +130,17 @@ export const schoolApi = {
     api.delete(`/school/users/${id}`),
 
   // Photo proxy
-  photoUrl: (originalUrl: string) =>
-    `${API_URL}/api/school/photo?url=${encodeURIComponent(originalUrl)}`,
+  photoUrl: (originalUrl: string, options?: { studentId?: string; roomKey?: string }) => {
+    if (!originalUrl) return '';
+    const params = new URLSearchParams({ url: originalUrl });
+    if (options?.studentId) params.set('studentId', String(options.studentId));
+    if (options?.roomKey) params.set('roomKey', String(options.roomKey));
+    return `${API_URL}/api/school/photo?${params.toString()}`;
+  },
+  syncRoomPhotos: (students: Array<{ id?: string; student_id?: string; photo_url?: string; photoUrl?: string }>, roomKey?: string, deviceId?: string) =>
+    api.post('/school/photos/sync-room', {
+      roomKey: roomKey || 'all-rooms',
+      deviceId: deviceId || 'tablet',
+      students,
+    }),
 };
