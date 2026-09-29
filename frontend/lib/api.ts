@@ -137,7 +137,7 @@ export const schoolApi = {
     if (options?.roomKey) params.set('roomKey', String(options.roomKey));
     return `${API_URL}/api/school/photo?${params.toString()}`;
   },
-  syncRoomPhotos: (students: Array<{ id?: string; student_id?: string; photo_url?: string; photoUrl?: string }>, roomKey?: string, deviceId?: string) =>
+  syncRoomPhotos: (students: Array<{ id?: string; student_id?: string; photo_url?: string | null; photoUrl?: string | null }>, roomKey?: string, deviceId?: string) =>
     api.post('/school/photos/sync-room', {
       roomKey: roomKey || 'all-rooms',
       deviceId: deviceId || 'tablet',

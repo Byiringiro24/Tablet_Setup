@@ -80,6 +80,7 @@ export type ApprovedExit = {
   destination?: string | null;
   student?: {
     id: string;
+    student_id?: string | null;
     first_name: string;
     last_name: string;
     student_id_number?: string | null;
