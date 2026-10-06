@@ -736,6 +736,10 @@ function normalizeStudent(input) {
       ? `${input.first_name || ''} ${input.last_name || ''}`.trim()
       : '')
   ).trim();
+  const studentType = String(input.studentType || input.student_type || input.type || '').trim();
+  const boardingStatus = String(input.boardingStatus || input.boarding_status || input.boardingStatusCode || '').trim();
+  const roomName = String(input.roomName || input.room_name || input.room || '').trim();
+  const dormitoryName = String(input.dormitoryName || input.dormitory_name || input.dormitory || '').trim();
   return {
     id: studentId,
     studentId,
@@ -746,6 +750,10 @@ function normalizeStudent(input) {
     section: String(input.section || input.section_name || '').trim(),
     studentDeviceId,
     deviceUserId: studentDeviceId,
+    studentType,
+    boardingStatus,
+    roomName,
+    dormitoryName,
     assignedDeviceId: input.assignedDeviceId || currentDevice?.deviceId || '',
     parentName: input.parentName || '',
     parentPhone: input.parentPhone || input.parent_phone || '',
@@ -755,6 +763,15 @@ function normalizeStudent(input) {
     createdAt: input.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
+}
+
+function normalizeStudentType(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  const normalized = text.toLowerCase();
+  if (normalized.includes('boarding') || normalized.includes('boarder') || normalized.includes('resident')) return 'Boarding Student';
+  if (normalized.includes('day')) return 'Day Student';
+  return text;
 }
 
 function timeStringToMinutes(value) {
@@ -790,6 +807,15 @@ function attendanceFromLog(log) {
   const deviceUser = usersCache.find((item) => item.userId === log.userId);
   const resolved = resolveAttendanceStatus(log);
   const stableId = log.id || `${log.userId}-${log.timestamp}`;
+  const resolvedDeviceUserId = String(student?.deviceUserId || student?.studentDeviceId || log.userId || '').trim();
+  const studentTypeValue =
+    student?.studentType || student?.student_type || log.studentType || log.student_type || log.memberType || log.type || '';
+  const boardingStatusValue =
+    student?.boardingStatus || student?.boarding_status || log.boardingStatus || log.boarding_status || '';
+  const roomNameValue =
+    student?.roomName || student?.room_name || log.roomName || log.room_name || log.room || log.dormitory || '';
+  const dormitoryNameValue =
+    student?.dormitoryName || student?.dormitory_name || log.dormitoryName || log.dormitory_name || log.dormitory || '';
   // Prefer the stored full name; fall back to first+last if available, then device name
   const studentName = student?.name
     || (student?.firstName && student?.lastName
@@ -797,15 +823,21 @@ function attendanceFromLog(log) {
         : null)
     || deviceUser?.name
     || `User ${log.userId}`;
+  const finalStudentType = normalizeStudentType(studentTypeValue || boardingStatusValue || '');
   return {
     id: stableId,
     studentId: student?.studentId || `RW-${log.userId}`,
     studentDeviceId: log.userId,
+    deviceUserId: resolvedDeviceUserId || log.userId,
     studentName,
     firstName: student?.firstName || '',
-    lastName:  student?.lastName  || '',
+    lastName: student?.lastName || '',
     className: student?.className || '',
     section: student?.section || '',
+    studentType: finalStudentType || 'Day Student',
+    boardingStatus: boardingStatusValue || '',
+    roomName: roomNameValue || '',
+    dormitoryName: dormitoryNameValue || '',
     deviceId: currentDevice?.deviceId || currentDevice?.ipAddress || 'FK_DEVICE',
     authenticationMethod: readableMethod(log.method),
     direction: log.direction,
@@ -820,7 +852,14 @@ function attendanceFromLog(log) {
       return `http://localhost:${port}/api/school/photo?url=${encodeURIComponent(u)}`;
     })(),
     verified: true,
-    rawData: log,
+    rawData: {
+      ...log,
+      deviceUserId: resolvedDeviceUserId || log.userId,
+      studentType: finalStudentType || 'Day Student',
+      boardingStatus: boardingStatusValue || '',
+      roomName: roomNameValue || '',
+      dormitoryName: dormitoryNameValue || '',
+    },
   };
 }
 
