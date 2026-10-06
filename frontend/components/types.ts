@@ -40,6 +40,12 @@ export type AttendanceLog = {
   status: string;
   direction?: string;
   photoUrl?: string;
+  studentType?: string;
+  boardingStatus?: string;
+  roomName?: string;
+  dormitoryName?: string;
+  deviceUserId?: string;
+  rawData?: Record<string, any>;
 };
 
 export type Student = {
