@@ -23,6 +23,46 @@ function resolveLocalPhotoPath(studentId, roomKey, rootPath = DEFAULT_CACHE_ROOT
   return path.join(localDir, `${safeStudent}.jpg`);
 }
 
+function getPhotoMetadataPath(localPath) {
+  return `${localPath}.meta.json`;
+}
+
+function readPhotoMetadata(localPath) {
+  const metaPath = getPhotoMetadataPath(localPath);
+  if (!fs.existsSync(metaPath)) return null;
+
+  try {
+    const content = fs.readFileSync(metaPath, 'utf8');
+    return JSON.parse(content);
+  } catch {
+    return null;
+  }
+}
+
+function writePhotoMetadata(localPath, payload = {}) {
+  const metaPath = getPhotoMetadataPath(localPath);
+  const safePayload = {
+    ...payload,
+    updatedAt: payload.updatedAt || Date.now(),
+  };
+
+  try {
+    fs.writeFileSync(metaPath, JSON.stringify(safePayload, null, 2));
+  } catch {
+    // best-effort only; a missing metadata file should not block photo sync
+  }
+}
+
+function scanRoomPhotoFiles(roomKey, rootPath = DEFAULT_CACHE_ROOT) {
+  const roomRoot = path.join(normalizeCacheRoot(rootPath), sanitizeKey(roomKey || 'all-rooms'));
+  if (!fs.existsSync(roomRoot)) return [];
+
+  return fs.readdirSync(roomRoot)
+    .filter((fileName) => /\.(jpe?g|png|webp)$/i.test(fileName))
+    .map((fileName) => path.join(roomRoot, fileName))
+    .sort((a, b) => a.localeCompare(b));
+}
+
 function buildPhotoCacheManifest(students = [], roomKey, deviceId, rootPath = DEFAULT_CACHE_ROOT) {
   return (Array.isArray(students) ? students : []).map((student) => {
     const studentId = student?.id || student?.student_id || student?.studentId || 'unknown';
@@ -38,6 +78,67 @@ function buildPhotoCacheManifest(students = [], roomKey, deviceId, rootPath = DE
       updatedAt: Date.now(),
     };
   });
+}
+
+function buildPhotoCacheSyncPlan({ studentsList = [], roomKey = 'all-rooms', deviceId = 'tablet', rootPath = DEFAULT_CACHE_ROOT } = {}) {
+  const desiredManifest = buildPhotoCacheManifest(studentsList, roomKey, deviceId, rootPath);
+  const desiredById = new Map();
+
+  for (const entry of desiredManifest) {
+    if (entry.photoUrl) {
+      desiredById.set(String(entry.studentId), entry);
+    }
+  }
+
+  const existingFiles = scanRoomPhotoFiles(roomKey, rootPath);
+  const existingIds = new Set();
+  const keep = [];
+  const add = [];
+  const changed = [];
+  const remove = [];
+
+  for (const localPath of existingFiles) {
+    const studentId = path.basename(localPath, path.extname(localPath));
+    existingIds.add(studentId);
+
+    if (!desiredById.has(studentId)) {
+      remove.push({ studentId, localPath, reason: 'stale' });
+      continue;
+    }
+
+    const desiredEntry = desiredById.get(studentId);
+    const metadata = readPhotoMetadata(localPath);
+    const isSame = metadata && metadata.studentId === studentId && metadata.photoUrl === desiredEntry.photoUrl && metadata.roomKey === String(roomKey || 'all-rooms');
+
+    if (isSame) {
+      keep.push({ ...desiredEntry, localPath });
+    } else {
+      changed.push({
+        ...desiredEntry,
+        localPath,
+        previousPhotoUrl: metadata?.photoUrl || null,
+        previousUpdatedAt: metadata?.updatedAt || null,
+        reason: 'changed',
+      });
+    }
+  }
+
+  for (const [studentId, desiredEntry] of desiredById.entries()) {
+    if (!existingIds.has(studentId)) {
+      add.push({ ...desiredEntry, localPath: desiredEntry.localPath, reason: 'missing' });
+    }
+  }
+
+  return {
+    roomKey: String(roomKey || 'all-rooms'),
+    deviceId: String(deviceId || 'tablet'),
+    total: desiredManifest.length,
+    keep,
+    add,
+    changed,
+    remove,
+    manifest: desiredManifest,
+  };
 }
 
 function shouldRefreshPhotoCache(entry, now = Date.now()) {
@@ -75,6 +176,12 @@ function savePhotoToCache(url, localPath, token = null) {
 
           const buffer = Buffer.from(await response.arrayBuffer());
           fs.writeFileSync(localPath, buffer);
+          writePhotoMetadata(localPath, {
+            studentId: path.basename(localPath, path.extname(localPath)),
+            photoUrl: url,
+            localPath,
+            updatedAt: Date.now(),
+          });
           resolve({ ok: true, localPath, size: buffer.length, updatedAt: Date.now() });
         })
         .catch((error) => {
@@ -90,8 +197,12 @@ module.exports = {
   PHOTO_CACHE_TTL_MS,
   DEFAULT_CACHE_ROOT,
   buildPhotoCacheManifest,
+  buildPhotoCacheSyncPlan,
   shouldRefreshPhotoCache,
   resolveLocalPhotoPath,
+  scanRoomPhotoFiles,
+  readPhotoMetadata,
+  writePhotoMetadata,
   ensurePhotoCacheDirectory,
   savePhotoToCache,
 };

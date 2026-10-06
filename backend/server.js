@@ -133,36 +133,53 @@ function getRoomPhotoRoot(roomKey = 'all-rooms') {
 }
 
 async function syncRoomPhotoCache({ roomKey = 'all-rooms', deviceId = 'tablet', studentsList = [], token = null } = {}) {
-  const manifest = buildPhotoCacheManifest(studentsList, roomKey, deviceId, PHOTO_CACHE_ROOT);
+  const plan = buildPhotoCacheSyncPlan({
+    studentsList,
+    roomKey,
+    deviceId,
+    rootPath: PHOTO_CACHE_ROOT,
+  });
+
   let syncedCount = 0;
   let refreshedCount = 0;
   let missingCount = 0;
 
-  for (const entry of manifest) {
-    if (!entry.photoUrl) continue;
-    const localPath = resolveLocalPhotoPath(entry.studentId, roomKey, PHOTO_CACHE_ROOT);
-    const stat = fs.existsSync(localPath) ? fs.statSync(localPath) : null;
-    const stale = !stat || shouldRefreshPhotoCache({ updatedAt: stat ? stat.mtimeMs : 0 }, Date.now());
+  for (const staleEntry of plan.remove) {
+    try {
+      if (fs.existsSync(staleEntry.localPath)) fs.rmSync(staleEntry.localPath, { force: true });
+      const metaPath = `${staleEntry.localPath}.meta.json`;
+      if (fs.existsSync(metaPath)) fs.rmSync(metaPath, { force: true });
+    } catch {
+      // best effort cleanup
+    }
+  }
 
-    if (!fs.existsSync(localPath) || stale) {
-      const outcome = await savePhotoToCache(entry.photoUrl, localPath, token);
-      if (outcome && outcome.ok) {
-        syncedCount += 1;
-        if (stat) refreshedCount += 1;
-      } else {
-        missingCount += 1;
-      }
+  const tasks = [...plan.add, ...plan.changed];
+
+  for (const entry of tasks) {
+    if (!entry.photoUrl) continue;
+    const outcome = await savePhotoToCache(entry.photoUrl, entry.localPath, token);
+    if (outcome && outcome.ok) {
+      syncedCount += 1;
+      if (entry.reason === 'changed') refreshedCount += 1;
+    } else {
+      missingCount += 1;
     }
   }
 
   return {
-    roomKey: String(roomKey || 'all-rooms'),
-    deviceId: String(deviceId || 'tablet'),
-    total: manifest.length,
+    roomKey: plan.roomKey,
+    deviceId: plan.deviceId,
+    total: plan.total,
+    keep: plan.keep.length,
+    add: plan.add.length,
+    changed: plan.changed.length,
+    remove: plan.remove.length,
     syncedCount,
     refreshedCount,
     missingCount,
-    manifest,
+    manifest: plan.manifest,
+    plan,
   };
 }
 
