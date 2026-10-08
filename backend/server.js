@@ -1022,7 +1022,36 @@ app.get('/api/device/users', async (req, res) => apiResult(res, await refreshUse
 app.post('/api/device/users', async (req, res) => {
   const userId = String(req.body?.userId || req.body?.studentDeviceId || req.body?.studentId || '').trim();
   const name = String(req.body?.name || req.body?.studentName || userId).replace(/\|/g, ' ').trim();
+  const photoUrl = String(req.body?.photoUrl || req.body?.photo_url || '').trim();
   if (!userId) return res.status(400).json({ success: false, error: 'User ID is required' });
+
+  // Save to local students.json so attendanceFromLog can display name + photo
+  const existingIdx = students.findIndex((s) => s.studentDeviceId === userId || s.deviceUserId === userId);
+  if (existingIdx >= 0) {
+    // Update name and photo if provided
+    students[existingIdx].name = name || students[existingIdx].name;
+    if (photoUrl) students[existingIdx].photoUrl = photoUrl;
+  } else {
+    // Add new entry
+    students.push(normalizeStudent({
+      studentDeviceId: userId,
+      name,
+      photoUrl,
+    }));
+  }
+  saveStudents();
+
+  // Download and cache the photo immediately if we have one
+  if (photoUrl) {
+    const token = schoolAuthToken || null;
+    syncRoomPhotoCache({
+      roomKey: 'device-push',
+      deviceId: currentDevice?.deviceId || 'tablet',
+      studentsList: [{ id: userId, student_id: userId, photo_url: photoUrl, photoUrl }],
+      token,
+    }).catch(() => null);
+  }
+
   const result = await sendCommand(`ADD_USER|${userId}|${name}`, 30000);
   if (result.success) await refreshUsersCache().catch(() => null);
   apiResult(res, result, 201);
