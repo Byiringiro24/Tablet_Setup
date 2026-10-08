@@ -119,10 +119,21 @@ export function SummaryTile({ label, value, color }: { label: string; value: str
     red:     "border-red-500/30 bg-red-500/10 text-red-300",
     slate:   "border-slate-600/40 bg-slate-800/50 text-slate-300",
   };
+  const displayValue = (() => {
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? Intl.NumberFormat().format(value) : '—';
+    }
+    if (value == null || value === '') return '—';
+    // If string looks numeric, format it
+    const n = Number((value as string).toString().replace(/[^0-9.-]/g, ''));
+    if (!Number.isNaN(n) && Number.isFinite(n)) return Intl.NumberFormat().format(n);
+    return String(value);
+  })();
+
   return (
     <div className={`rounded-2xl border p-4 ${map[color] ?? map.slate}`}>
       <p className="text-xs font-medium opacity-60 truncate">{label}</p>
-      <p className="mt-1 text-2xl font-black leading-none">{value}</p>
+      <p className="mt-1 text-2xl font-black leading-none">{displayValue}</p>
     </div>
   );
 }

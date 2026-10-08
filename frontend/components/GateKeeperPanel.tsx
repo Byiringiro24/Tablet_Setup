@@ -229,7 +229,7 @@ export default function GateKeeperPanel({ onClose }: { onClose: () => void }) {
                 ${isSelected ? "border-cyan-500/50 bg-cyan-500/10" : "border-slate-700 bg-slate-900/60 hover:border-slate-600"}
                 ${isLate ? "border-red-500/40 bg-red-500/5" : ""}`}>
               {/* Photo */}
-              <div className="h-16 w-14 shrink-0 rounded-xl overflow-hidden border-2 border-slate-700">
+              <div className="h-28 w-20 shrink-0 rounded-xl overflow-hidden border-2 border-slate-700">
                 {photoSrc ? (
                   <img src={photoSrc} alt={name} className="h-full w-full object-cover"
                     onError={e => { (e.currentTarget as any).style.display = "none"; }} />
@@ -263,7 +263,7 @@ export default function GateKeeperPanel({ onClose }: { onClose: () => void }) {
       {selected && (
         <div className="shrink-0 border-t-2 border-cyan-500/30 bg-slate-900 p-5 space-y-4">
           <div className="flex items-center gap-4">
-            <div className="h-20 w-16 shrink-0 rounded-2xl overflow-hidden border-2 border-cyan-500/40">
+            <div className="h-28 w-20 shrink-0 rounded-2xl overflow-hidden border-2 border-cyan-500/40">
               {selected.student?.photo_url ? (
                 <img src={schoolApi.photoUrl(selected.student.photo_url, {
                   studentId: selected.student.id ?? selected.student.student_id,

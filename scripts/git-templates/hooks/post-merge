@@ -1,0 +1,5 @@
+﻿@echo off
+REM Auto-run ensure-install-root silently after merges/pulls
+pushd "%~dp0.."
+powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "scripts\ensure-install-root.ps1" -NonInteractive -Force
+popd

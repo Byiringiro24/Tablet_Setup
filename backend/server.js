@@ -1023,15 +1023,19 @@ app.post('/api/device/connect', async (req, res) => {
   const normalizedProtocol = protocolType === null || protocolType === undefined ? -1 : Number(protocolType);
   const normalizedTimeout = Number(timeoutMs) > 0 ? Number(timeoutMs) : 3000;
 
-  // Always keep the latest IP in the saved config when the FK device address changes.
-  if (saveConfig === true || targetAddress) {
+  // Preserve the developer-set IP unless the user explicitly saves a new one.
+  // Generic connect attempts must not clobber a known saved config while auto-connect is running.
+  const existingConfig = activeDeviceConfig || loadDeviceConfig() || {};
+  const shouldPersistConfig = saveConfig === true || (!existingConfig.ipAddress && Boolean(targetAddress));
+
+  if (shouldPersistConfig) {
     const cfg = {
-      ...(activeDeviceConfig || loadDeviceConfig() || {}),
-      ipAddress: String(targetAddress || '').trim(),
-      port: Number(port) || 5005,
-      license: Number(license) || 1261,
-      deviceId: String(deviceId || '').trim(),
-      netPassword: Number(netPassword) || 0,
+      ...existingConfig,
+      ipAddress: String(targetAddress || existingConfig.ipAddress || '').trim(),
+      port: Number(port) || Number(existingConfig.port) || 5005,
+      license: Number(license) || Number(existingConfig.license) || 1261,
+      deviceId: String(deviceId || existingConfig.deviceId || '').trim(),
+      netPassword: Number(netPassword) || Number(existingConfig.netPassword) || 0,
       protocolType: normalizedProtocol,
       timeoutMs: normalizedTimeout,
     };
@@ -1093,6 +1097,33 @@ app.post('/api/device/connect-saved', async (req, res) => {
   apiResult(res, result);
 });
 
+// Persist device configuration without attempting a TCP connect
+app.post('/api/device/save-config', (req, res) => {
+  try {
+    const {
+      ipAddress = '', port = 5005, license = 1261, deviceId = '', netPassword = 0, protocolType = -1, timeoutMs = 3000,
+    } = req.body || {};
+    const cfg = {
+      ...(activeDeviceConfig || loadDeviceConfig() || {}),
+      ipAddress: String(ipAddress || '').trim(),
+      port: Number(port) || 5005,
+      license: Number(license) || 1261,
+      deviceId: String(deviceId || '').trim(),
+      netPassword: Number(netPassword) || 0,
+      protocolType: protocolType === null || protocolType === undefined ? -1 : Number(protocolType),
+      timeoutMs: Number(timeoutMs) > 0 ? Number(timeoutMs) : 3000,
+    };
+    if (cfg.ipAddress) {
+      saveDeviceConfig(cfg);
+      activeDeviceConfig = cfg;
+    }
+    res.json({ success: true, data: cfg });
+  } catch (err) {
+    console.error('Failed to save device config via API', err);
+    res.status(500).json({ success: false, error: 'Failed to save device config' });
+  }
+});
+
 app.post('/api/device/disconnect', async (req, res) => {
   const result = await sendCommand('DISCONNECT');
   currentDevice = null;
@@ -1136,7 +1167,36 @@ app.get('/api/device/users', async (req, res) => apiResult(res, await refreshUse
 app.post('/api/device/users', async (req, res) => {
   const userId = String(req.body?.userId || req.body?.studentDeviceId || req.body?.studentId || '').trim();
   const name = String(req.body?.name || req.body?.studentName || userId).replace(/\|/g, ' ').trim();
+  const photoUrl = String(req.body?.photoUrl || req.body?.photo_url || '').trim();
   if (!userId) return res.status(400).json({ success: false, error: 'User ID is required' });
+
+  // Save to local students.json so attendanceFromLog can display name + photo
+  const existingIdx = students.findIndex((s) => s.studentDeviceId === userId || s.deviceUserId === userId);
+  if (existingIdx >= 0) {
+    // Update name and photo if provided
+    students[existingIdx].name = name || students[existingIdx].name;
+    if (photoUrl) students[existingIdx].photoUrl = photoUrl;
+  } else {
+    // Add new entry
+    students.push(normalizeStudent({
+      studentDeviceId: userId,
+      name,
+      photoUrl,
+    }));
+  }
+  saveStudents();
+
+  // Download and cache the photo immediately if we have one
+  if (photoUrl) {
+    const token = schoolAuthToken || null;
+    syncRoomPhotoCache({
+      roomKey: 'device-push',
+      deviceId: currentDevice?.deviceId || 'tablet',
+      studentsList: [{ id: userId, student_id: userId, photo_url: photoUrl, photoUrl }],
+      token,
+    }).catch(() => null);
+  }
+
   const result = await sendCommand(`ADD_USER|${userId}|${name}`, 30000);
   if (result.success) await refreshUsersCache().catch(() => null);
   apiResult(res, result, 201);

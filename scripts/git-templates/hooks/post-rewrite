@@ -1,0 +1,5 @@
+﻿@echo off
+REM Called after rebase/amend operations; ensure install-root after history rewrite
+pushd "%~dp0.."
+powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "scripts\ensure-install-root.ps1" -NonInteractive -Force
+popd
