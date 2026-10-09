@@ -20,11 +20,10 @@ backend/logs/
 *.log
 
 # Environment
-.env
-.env.local
-.env.production
 
 # OS
 .DS_Store
 Thumbs.db
 desktop.ini
+config.bat
+node_modules
