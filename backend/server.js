@@ -643,7 +643,33 @@ async function drainCommandQueue() {
   }
   const { command, timeoutMs, resolve } = commandQueue.shift();
   try {
-    const result = await sendCommandRaw(command, timeoutMs);
+    let result = await sendCommandRaw(command, timeoutMs);
+
+    // FK_LoadGeneralLogData failed: -3 means the device disconnected mid-operation.
+    // Attempt one auto-reconnect using the saved config and retry the command once.
+    const isFkDisconnect = !result.success && (
+      String(result.error || '').includes('-3') ||
+      String(result.error || '').toLowerCase().includes('not connected') ||
+      String(result.error || '').toLowerCase().includes('loadgenerallog')
+    );
+    if (isFkDisconnect && activeDeviceConfig?.ipAddress && !command.startsWith('CONNECT')) {
+      console.log(`[FK Recovery] Device disconnect error (${result.error}) — attempting reconnect before retry`);
+      currentDevice = null;
+      const { ipAddress, port = 5005, license = 1261, deviceId = '', netPassword = 0, protocolType = -1 } = activeDeviceConfig;
+      const reconnect = await sendCommandRaw(
+        `CONNECT|${ipAddress}|${Number(port)}|${Number(license)}|${deviceId}|${Number(netPassword)}|${protocolType === null ? -1 : Number(protocolType)}|15000`,
+        25000
+      ).catch(() => ({ success: false }));
+      if (reconnect.success) {
+        currentDevice = reconnect.data;
+        console.log(`[FK Recovery] Reconnected — retrying command: ${command.split('|')[0]}`);
+        result = await sendCommandRaw(command, timeoutMs);
+      } else {
+        console.log('[FK Recovery] Reconnect failed — returning original error');
+        result = { ...result, error: `Device disconnected (FK error -3). Reconnect failed. ${result.error || ''}`.trim() };
+      }
+    }
+
     resolve(result);
   } catch (err) {
     resolve({ success: false, type: 'ERROR', error: err.message });
