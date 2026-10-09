@@ -31,8 +31,66 @@ $FRONTEND_DIR  = Join-Path $SCRIPT_DIR "frontend"
 $NSSM_DIR      = Join-Path $SCRIPT_DIR "tools"
 $NSSM_EXE      = Join-Path $NSSM_DIR   "nssm.exe"
 $LOG_DIR       = Join-Path $SCRIPT_DIR "logs"
-$NODE_EXE      = (Get-Command node -ErrorAction SilentlyContinue)?.Source
-$NPM_EXE       = (Get-Command npm  -ErrorAction SilentlyContinue)?.Source
+$nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+if ($nodeCmd) { $NODE_EXE = $nodeCmd.Source } else { $NODE_EXE = $null }
+
+function Resolve-NpmExecutable {
+    $cmdNpmCmd = Get-Command npm.cmd -ErrorAction SilentlyContinue
+    $cmdNpm = Get-Command npm -ErrorAction SilentlyContinue
+
+    $candidates = @()
+    if ($cmdNpmCmd) { $candidates += $cmdNpmCmd.Source }
+    if ($cmdNpm) { $candidates += $cmdNpm.Source }
+    $candidates += @(
+        "C:\Program Files\nodejs\npm.cmd",
+        "C:\Program Files (x86)\nodejs\npm.cmd",
+        "$env:LOCALAPPDATA\Programs\nodejs\npm.cmd"
+    )
+
+    $candidates = $candidates | Where-Object { $_ } | Select-Object -Unique
+
+    foreach ($candidate in $candidates) {
+        if (Test-Path $candidate) { return $candidate }
+    }
+
+    return "npm.cmd"
+}
+
+function Invoke-NpmCommand {
+    param(
+        [string[]]$Arguments
+    )
+
+    $npmCandidates = @(
+        (Resolve-NpmExecutable),
+        "npm.cmd",
+        "npm"
+    ) | Where-Object { $_ } | Select-Object -Unique
+
+    foreach ($candidate in $npmCandidates) {
+        try {
+            if ($candidate -match '\.(cmd|bat|exe)$') {
+                & $candidate @Arguments
+                if ($LASTEXITCODE -eq 0) { return }
+            }
+            else {
+                $cmdText = '"' + $candidate + '"'
+                foreach ($arg in $Arguments) {
+                    $cmdText += ' "' + $arg + '"'
+                }
+                cmd /d /s /c $cmdText
+                if ($LASTEXITCODE -eq 0) { return }
+            }
+        }
+        catch {
+            Write-Warn "npm fallback failed with '$candidate': $($_.Exception.Message)"
+        }
+    }
+
+    throw "All npm command variants failed. Use npm.cmd or bypass execution policy."
+}
+
+$NPM_EXE = Resolve-NpmExecutable
 
 $BRIDGE_SVC    = "EcaAfrica-Bridge"
 $FRONTEND_SVC  = "EcaAfrica-Frontend"
@@ -114,7 +172,7 @@ if (-not (Test-Path $NSSM_EXE)) {
 Write-Step "Installing backend dependencies"
 Push-Location $BACKEND_DIR
 try {
-    & $NPM_EXE install --production --prefer-offline 2>&1 | Out-Null
+    Invoke-NpmCommand @("install", "--production", "--prefer-offline") | Out-Null
     Write-OK "Backend npm install done"
 } catch {
     Write-Warn "npm install warning: $_ (continuing)"
@@ -127,11 +185,11 @@ if (-not (Test-Path $nextBuildDir)) {
     Write-Warn ".next not found — running npm run build (~2 minutes)..."
     Push-Location $FRONTEND_DIR
     try {
-        & $NPM_EXE install 2>&1 | Out-Null
-        & $NPM_EXE run build
+        Invoke-NpmCommand @("install") | Out-Null
+        Invoke-NpmCommand @("run", "build")
         Write-OK "Frontend build complete"
     } catch {
-        Write-Warn "Frontend build failed: $_ — service installed but may not start until you run: npm run build"
+        Write-Warn "Frontend build failed: $_ — service installed but may not start until you run: npm.cmd run build"
     } finally { Pop-Location }
 } else {
     Write-OK ".next build exists"
@@ -242,13 +300,15 @@ $fSvc = Get-Service -Name $FRONTEND_SVC -ErrorAction SilentlyContinue
 if ($bSvc -and $bSvc.Status -eq "Running") {
     Write-OK "$BRIDGE_SVC    RUNNING  (as SYSTEM — full Administrator)"
 } else {
-    Write-Fail "$BRIDGE_SVC    $($bSvc?.Status ?? 'NOT FOUND') — check $LOG_DIR\bridge-err.log"
+    $bridgeStatus = if ($bSvc) { $bSvc.Status } else { 'NOT FOUND' }
+    Write-Fail "$BRIDGE_SVC    $bridgeStatus — check $LOG_DIR\bridge-err.log"
 }
 
 if ($fSvc -and $fSvc.Status -eq "Running") {
     Write-OK "$FRONTEND_SVC  RUNNING  (as SYSTEM — full Administrator)"
 } else {
-    Write-Fail "$FRONTEND_SVC  $($fSvc?.Status ?? 'NOT FOUND') — check $LOG_DIR\frontend-err.log"
+    $frontendStatus = if ($fSvc) { $fSvc.Status } else { 'NOT FOUND' }
+    Write-Fail "$FRONTEND_SVC  $frontendStatus — check $LOG_DIR\frontend-err.log"
 }
 
 # ── HTTP health check ─────────────────────────────────────────────────────────

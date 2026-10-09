@@ -218,7 +218,8 @@ export default function GateKeeperPanel({ onClose }: { onClose: () => void }) {
         ) : filtered.map(ex => {
           const s = ex.student;
           const name = s ? `${s.first_name} ${s.last_name}` : "Unknown";
-          const photoSrc = s?.photo_url ? schoolApi.photoUrl(s.photo_url) : null;
+          const roomKey = (ex as any)?.dormitory_id ?? (ex as any)?.room_id ?? 'all-rooms';
+          const photoSrc = s?.photo_url ? schoolApi.photoUrl(s.photo_url, { studentId: s.id ?? s.student_id, roomKey }) : null;
           const isLate = ex.late_return_flagged && ex.leave_state === "outside_school";
           const isSelected = selected?.id === ex.id;
           return (
@@ -264,7 +265,10 @@ export default function GateKeeperPanel({ onClose }: { onClose: () => void }) {
           <div className="flex items-center gap-4">
             <div className="h-28 w-20 shrink-0 rounded-2xl overflow-hidden border-2 border-cyan-500/40">
               {selected.student?.photo_url ? (
-                <img src={schoolApi.photoUrl(selected.student.photo_url)} alt="" className="h-full w-full object-cover" />
+                <img src={schoolApi.photoUrl(selected.student.photo_url, {
+                  studentId: selected.student.id ?? selected.student.student_id,
+                  roomKey: (selected as any)?.dormitory_id ?? (selected as any)?.room_id ?? 'all-rooms',
+                })} alt="" className="h-full w-full object-cover" />
               ) : (
                 <div className="h-full w-full flex items-center justify-center bg-slate-800 text-2xl font-black text-slate-400">
                   {`${selected.student?.first_name?.[0] ?? ""}${selected.student?.last_name?.[0] ?? ""}`}

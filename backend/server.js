@@ -5,6 +5,12 @@ const path = require('path');
 const readline = require('readline');
 const fs = require('fs');
 const fsSync = fs;  // alias used in WireGuard routes for clarity
+const {
+  buildPhotoCacheManifest,
+  shouldRefreshPhotoCache,
+  resolveLocalPhotoPath,
+  savePhotoToCache,
+} = require('./photo-cache');
 
 // ΓöÇΓöÇ Environment constants ΓÇö declared here so every function below can use them ΓöÇΓöÇ
 // These were previously declared mid-file, causing Temporal Dead Zone ReferenceErrors.
@@ -15,9 +21,10 @@ let   DEV_PASSWORD    = process.env.DEV_PASSWORD  || 'admin1234';
 const VPN_ALLOWED_IPS    = process.env.VPN_ALLOWED_IPS    || '10.0.0.0/16';
 const WG_SERVER_ENDPOINT = process.env.WG_SERVER_ENDPOINT || '169.58.124.150:51820';
 const WG_DNS             = process.env.WG_DNS             || '1.1.1.1';
-const WG_EXE             = 'C:\\Program Files\\WireGuard\\wg.exe';
-const WIREGUARD_TUNNEL_NAME = 'EcareAfrica';
-const WG_TUNNEL_DIR      = `${process.env.PROGRAMDATA || 'C:\\ProgramData'}\\WireGuard`;
+// WireGuard configuration (configurable via ENV or UI)
+const WG_EXE             = process.env.WG_EXE || 'C:\\Program Files\\WireGuard\\wg.exe';
+const WIREGUARD_TUNNEL_NAME = process.env.WG_TUNNEL_NAME || 'EcareAfrica';
+const WG_TUNNEL_DIR      = process.env.WG_TUNNEL_DIR || `${process.env.PROGRAMDATA || 'C:\\ProgramData'}\\WireGuard`;
 
 async function getWireGuardRuntimeStatus() {
   const wgExeExists = fsSync.existsSync(WG_EXE);
@@ -118,6 +125,63 @@ let usersCache = [];
 let logsCache = [];
 let students = loadStudents();
 let attendanceSettings = loadAttendanceSettings();
+const PHOTO_CACHE_ROOT = path.join(__dirname, 'cache', 'photos');
+
+function getRoomPhotoRoot(roomKey = 'all-rooms') {
+  const safeRoom = String(roomKey || 'all-rooms').trim().replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, '-');
+  return path.join(PHOTO_CACHE_ROOT, safeRoom || 'all-rooms');
+}
+
+async function syncRoomPhotoCache({ roomKey = 'all-rooms', deviceId = 'tablet', studentsList = [], token = null } = {}) {
+  const plan = buildPhotoCacheSyncPlan({
+    studentsList,
+    roomKey,
+    deviceId,
+    rootPath: PHOTO_CACHE_ROOT,
+  });
+
+  let syncedCount = 0;
+  let refreshedCount = 0;
+  let missingCount = 0;
+
+  for (const staleEntry of plan.remove) {
+    try {
+      if (fs.existsSync(staleEntry.localPath)) fs.rmSync(staleEntry.localPath, { force: true });
+      const metaPath = `${staleEntry.localPath}.meta.json`;
+      if (fs.existsSync(metaPath)) fs.rmSync(metaPath, { force: true });
+    } catch {
+      // best effort cleanup
+    }
+  }
+
+  const tasks = [...plan.add, ...plan.changed];
+
+  for (const entry of tasks) {
+    if (!entry.photoUrl) continue;
+    const outcome = await savePhotoToCache(entry.photoUrl, entry.localPath, token);
+    if (outcome && outcome.ok) {
+      syncedCount += 1;
+      if (entry.reason === 'changed') refreshedCount += 1;
+    } else {
+      missingCount += 1;
+    }
+  }
+
+  return {
+    roomKey: plan.roomKey,
+    deviceId: plan.deviceId,
+    total: plan.total,
+    keep: plan.keep.length,
+    add: plan.add.length,
+    changed: plan.changed.length,
+    remove: plan.remove.length,
+    syncedCount,
+    refreshedCount,
+    missingCount,
+    manifest: plan.manifest,
+    plan,
+  };
+}
 
 // Auto-connect state
 const deviceConfigFile = path.join(dataDir, 'device-config.json');
@@ -166,6 +230,7 @@ function sseEmit(event, data) {
 
 // Auto-log-poll state
 let logPollTimer = null;
+let logPollStartedAt = 0;   // epoch ms when current poll session started
 const seenLogIds = new Set();
 let pollBusy = false;   // prevent overlapping polls if device is slow
 
@@ -173,6 +238,8 @@ function startLogPoll() {
   if (logPollTimer) return;
   seenLogIds.clear();   // always reset on new connection so first poll seeds correctly
   pollBusy = false;
+  // Record when the poll started so we can tell apart pre-existing vs new logs
+  logPollStartedAt = Date.now();
   logPollTimer = setInterval(runLogPoll, 2000);
   console.log('Log auto-poll started (every 2s)');
 }
@@ -181,6 +248,7 @@ function stopLogPoll() {
   if (logPollTimer) { clearInterval(logPollTimer); logPollTimer = null; }
   seenLogIds.clear();
   pollBusy = false;
+  logPollStartedAt = 0;
 }
 
 async function runLogPoll() {
@@ -204,15 +272,34 @@ async function runLogPoll() {
     }
     const rawLogs = Array.isArray(result.data?.logs) ? result.data.logs : [];
 
-    // On first poll after connect, seed ALL existing logs ├óΓé¼ΓÇ¥ never flash old attendance
+    // On first poll after connect, seed ALL logs that existed BEFORE we started polling
+    // as "already seen" so they don't flash as new.
+    // IMPORTANT: any log whose timestamp is >= logPollStartedAt may be a real new scan
+    // that happened in the ~2s window between startLogPoll() and the first poll execution.
+    // Those MUST be treated as fresh and emitted as 'attendance' events.
     if (seenLogIds.size === 0 && rawLogs.length > 0) {
       const getLogKey = (raw) => raw.id || `${raw.userId}-${raw.timestamp}`;
-      rawLogs.forEach((raw) => seenLogIds.add(getLogKey(raw)));
+      const startMs = logPollStartedAt;
+      const preExisting = rawLogs.filter((raw) => {
+        const ts = raw.timestamp ? new Date(raw.timestamp).getTime() : 0;
+        return ts < startMs;
+      });
+      const postConnect = rawLogs.filter((raw) => {
+        const ts = raw.timestamp ? new Date(raw.timestamp).getTime() : 0;
+        return ts >= startMs;
+      });
+      // Mark all pre-existing logs as already seen
+      preExisting.forEach((raw) => seenLogIds.add(getLogKey(raw)));
       logsCache = rawLogs;
-      // Pull users then emit init with resolved names for sidebar
       await refreshUsersCache().catch(() => null);
-      sseEmit('init', rawLogs.map(attendanceFromLog));
-      console.log(`Log poll: seeded ${rawLogs.length} existing log(s) ├óΓé¼ΓÇ¥ no flash`);
+      // Emit pre-existing as 'init' (sidebar list only, no flash)
+      sseEmit('init', preExisting.map(attendanceFromLog));
+      console.log(`Log poll: seeded ${preExisting.length} old log(s); ${postConnect.length} post-connect log(s) will flash`);
+      if (postConnect.length > 0) {
+        // These are real new scans — mark seen and flash them
+        postConnect.forEach((raw) => seenLogIds.add(getLogKey(raw)));
+        sseEmit('attendance', postConnect.map(attendanceFromLog));
+      }
       pollBusy = false;
       return;
     }
@@ -346,7 +433,7 @@ function rememberLatestDeviceIp(ipAddress, port = 5005, extra = {}) {
   return nextConfig;
 }
 
-function ensureWireGuardConfigFile({ privateKey, serverPublicKey, vpnIp = '10.0.0.2', dns = WG_DNS, serverEndpoint = WG_SERVER_ENDPOINT, allowedIPs = VPN_ALLOWED_IPS } = {}) {
+function ensureWireGuardConfigFile({ privateKey, serverPublicKey, vpnIp = '10.0.0.2', dns = WG_DNS, serverEndpoint = WG_SERVER_ENDPOINT, allowedIPs = VPN_ALLOWED_IPS, tunnelName = WIREGUARD_TUNNEL_NAME } = {}) {
   if (!privateKey || !serverPublicKey) {
     throw new Error('Private key and server public key are required to build the WireGuard config.');
   }
@@ -366,8 +453,8 @@ function ensureWireGuardConfigFile({ privateKey, serverPublicKey, vpnIp = '10.0.
     'PersistentKeepalive = 25',
   ].join('\n');
 
-  const confPath = path.join(WG_TUNNEL_DIR, `${WIREGUARD_TUNNEL_NAME}.conf`);
-  const tempConfPath = path.join(process.env.TEMP || 'C:\\Temp', `${WIREGUARD_TUNNEL_NAME}.conf`);
+  const confPath = path.join(WG_TUNNEL_DIR, `${tunnelName}.conf`);
+  const tempConfPath = path.join(process.env.TEMP || 'C:\\Temp', `${tunnelName}.conf`);
 
   if (!fsSync.existsSync(confPath) || !fsSync.readFileSync(confPath, 'utf8').includes('PublicKey = ')) {
     fsSync.writeFileSync(confPath, Buffer.from(confContent, 'utf8'));
@@ -556,7 +643,33 @@ async function drainCommandQueue() {
   }
   const { command, timeoutMs, resolve } = commandQueue.shift();
   try {
-    const result = await sendCommandRaw(command, timeoutMs);
+    let result = await sendCommandRaw(command, timeoutMs);
+
+    // FK_LoadGeneralLogData failed: -3 means the device disconnected mid-operation.
+    // Attempt one auto-reconnect using the saved config and retry the command once.
+    const isFkDisconnect = !result.success && (
+      String(result.error || '').includes('-3') ||
+      String(result.error || '').toLowerCase().includes('not connected') ||
+      String(result.error || '').toLowerCase().includes('loadgenerallog')
+    );
+    if (isFkDisconnect && activeDeviceConfig?.ipAddress && !command.startsWith('CONNECT')) {
+      console.log(`[FK Recovery] Device disconnect error (${result.error}) — attempting reconnect before retry`);
+      currentDevice = null;
+      const { ipAddress, port = 5005, license = 1261, deviceId = '', netPassword = 0, protocolType = -1 } = activeDeviceConfig;
+      const reconnect = await sendCommandRaw(
+        `CONNECT|${ipAddress}|${Number(port)}|${Number(license)}|${deviceId}|${Number(netPassword)}|${protocolType === null ? -1 : Number(protocolType)}|15000`,
+        25000
+      ).catch(() => ({ success: false }));
+      if (reconnect.success) {
+        currentDevice = reconnect.data;
+        console.log(`[FK Recovery] Reconnected — retrying command: ${command.split('|')[0]}`);
+        result = await sendCommandRaw(command, timeoutMs);
+      } else {
+        console.log('[FK Recovery] Reconnect failed — returning original error');
+        result = { ...result, error: `Device disconnected (FK error -3). Reconnect failed. ${result.error || ''}`.trim() };
+      }
+    }
+
     resolve(result);
   } catch (err) {
     resolve({ success: false, type: 'ERROR', error: err.message });
@@ -641,23 +754,50 @@ function normalizeStudent(input) {
   const studentDeviceId = String(input.studentDeviceId || input.deviceUserId || input.enrollmentId || input.id || '').trim();
   const generatedSuffix = studentDeviceId || Date.now().toString().slice(-6);
   const studentId = String(input.studentId || `RW-${generatedSuffix}`).trim().toUpperCase();
+  // Build full name: support both single 'name' field (local registration)
+  // and first_name + last_name (school API response)
+  const fullName = String(
+    input.name ||
+    ((input.first_name || input.last_name)
+      ? `${input.first_name || ''} ${input.last_name || ''}`.trim()
+      : '')
+  ).trim();
+  const studentType = String(input.studentType || input.student_type || input.type || '').trim();
+  const boardingStatus = String(input.boardingStatus || input.boarding_status || input.boardingStatusCode || '').trim();
+  const roomName = String(input.roomName || input.room_name || input.room || '').trim();
+  const dormitoryName = String(input.dormitoryName || input.dormitory_name || input.dormitory || '').trim();
   return {
     id: studentId,
     studentId,
-    name: String(input.name || '').trim(),
-    className: String(input.className || '').trim(),
-    section: String(input.section || '').trim(),
+    name: fullName,
+    firstName: String(input.first_name || input.firstName || '').trim(),
+    lastName: String(input.last_name || input.lastName || '').trim(),
+    className: String(input.className || input.class_name || '').trim(),
+    section: String(input.section || input.section_name || '').trim(),
     studentDeviceId,
     deviceUserId: studentDeviceId,
+    studentType,
+    boardingStatus,
+    roomName,
+    dormitoryName,
     assignedDeviceId: input.assignedDeviceId || currentDevice?.deviceId || '',
     parentName: input.parentName || '',
-    parentPhone: input.parentPhone || '',
+    parentPhone: input.parentPhone || input.parent_phone || '',
     phone: input.phone || '',
     email: input.email || '',
-    photoUrl: input.photoUrl || input.photo_url || '',   // ├óΓÇá┬É stored for display on scan
+    photoUrl: input.photoUrl || input.photo_url || '',   // stored for display on scan
     createdAt: input.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
+}
+
+function normalizeStudentType(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  const normalized = text.toLowerCase();
+  if (normalized.includes('boarding') || normalized.includes('boarder') || normalized.includes('resident')) return 'Boarding Student';
+  if (normalized.includes('day')) return 'Day Student';
+  return text;
 }
 
 function timeStringToMinutes(value) {
@@ -693,13 +833,37 @@ function attendanceFromLog(log) {
   const deviceUser = usersCache.find((item) => item.userId === log.userId);
   const resolved = resolveAttendanceStatus(log);
   const stableId = log.id || `${log.userId}-${log.timestamp}`;
+  const resolvedDeviceUserId = String(student?.deviceUserId || student?.studentDeviceId || log.userId || '').trim();
+  const studentTypeValue =
+    student?.studentType || student?.student_type || log.studentType || log.student_type || log.memberType || log.type || '';
+  const boardingStatusValue =
+    student?.boardingStatus || student?.boarding_status || log.boardingStatus || log.boarding_status || '';
+  const roomNameValue =
+    student?.roomName || student?.room_name || log.roomName || log.room_name || log.room || log.dormitory || '';
+  const dormitoryNameValue =
+    student?.dormitoryName || student?.dormitory_name || log.dormitoryName || log.dormitory_name || log.dormitory || '';
+  // Prefer the stored full name; fall back to first+last if available, then device name
+  const studentName = student?.name
+    || (student?.firstName && student?.lastName
+        ? `${student.firstName} ${student.lastName}`.trim()
+        : null)
+    || deviceUser?.name
+    || `User ${log.userId}`;
+  const finalStudentType = normalizeStudentType(studentTypeValue || boardingStatusValue || '');
   return {
     id: stableId,
     studentId: student?.studentId || `RW-${log.userId}`,
     studentDeviceId: log.userId,
-    studentName: student?.name || deviceUser?.name || `User ${log.userId}`,
+    deviceUserId: resolvedDeviceUserId || log.userId,
+    studentName,
+    firstName: student?.firstName || '',
+    lastName: student?.lastName || '',
     className: student?.className || '',
     section: student?.section || '',
+    studentType: finalStudentType || 'Day Student',
+    boardingStatus: boardingStatusValue || '',
+    roomName: roomNameValue || '',
+    dormitoryName: dormitoryNameValue || '',
     deviceId: currentDevice?.deviceId || currentDevice?.ipAddress || 'FK_DEVICE',
     authenticationMethod: readableMethod(log.method),
     direction: log.direction,
@@ -714,7 +878,14 @@ function attendanceFromLog(log) {
       return `http://localhost:${port}/api/school/photo?url=${encodeURIComponent(u)}`;
     })(),
     verified: true,
-    rawData: log,
+    rawData: {
+      ...log,
+      deviceUserId: resolvedDeviceUserId || log.userId,
+      studentType: finalStudentType || 'Day Student',
+      boardingStatus: boardingStatusValue || '',
+      roomName: roomNameValue || '',
+      dormitoryName: dormitoryNameValue || '',
+    },
   };
 }
 
@@ -1090,6 +1261,31 @@ app.post('/api/device/push-students', async (req, res) => {
     if (result.success) pushed.push(student); else failed.push({ student, error: result.error, code: result.code });
   }
   if (pushed.length) await refreshUsersCache().catch(() => null);
+
+  // Download and cache photos for successfully pushed students.
+  // Photos are stored locally so they display instantly on the attendance flash card
+  // even without an active internet connection.
+  if (pushed.length > 0) {
+    const token = schoolAuthToken || null;
+    const photoStudents = pushed
+      .filter((s) => s.photoUrl || s.photo_url)
+      .map((s) => ({
+        id: s.studentId || s.id,
+        student_id: s.studentId || s.id,
+        photo_url: s.photoUrl || s.photo_url || '',
+        photoUrl:  s.photoUrl || s.photo_url || '',
+      }));
+    if (photoStudents.length > 0) {
+      // Fire and forget — don't block the push response
+      syncRoomPhotoCache({
+        roomKey:      'device-push',
+        deviceId:     currentDevice?.deviceId || 'tablet',
+        studentsList: photoStudents,
+        token,
+      }).catch((err) => console.warn('[PhotoCache] Photo sync failed after push:', err?.message));
+    }
+  }
+
   res.json({ success: failed.length === 0, data: { pushed: pushed.length, failed: failed.length, failures: failed }, error: failed[0]?.error || null });
 });
 
@@ -1387,7 +1583,8 @@ app.post('/api/wireguard/generate-keys', async (req, res) => {
 // Body: { serverPublicKey, serverEndpoint, vpnIp, dns? }
 // The super admin pastes the serverPublicKey (from the server web UI) and the assigned VPN IP.
 app.post('/api/wireguard/install', async (req, res) => {
-  const { serverPublicKey, serverEndpoint, vpnIp, dns = '1.1.1.1' } = req.body || {};
+  const { serverPublicKey, serverEndpoint, vpnIp, dns = '1.1.1.1', tunnelName } = req.body || {};
+  const effectiveTunnelName = tunnelName || WIREGUARD_TUNNEL_NAME;
 
   if (!serverPublicKey) return res.status(400).json({ success: false, error: 'serverPublicKey is required' });
   if (!serverEndpoint)  return res.status(400).json({ success: false, error: 'serverEndpoint is required (e.g. 169.58.124.150:51820)' });
@@ -1420,6 +1617,7 @@ app.post('/api/wireguard/install', async (req, res) => {
     dns: dns || WG_DNS,
     serverEndpoint,
     allowedIPs: VPN_ALLOWED_IPS,
+    tunnelName: effectiveTunnelName,
   });
 
   // Install tunnel via WireGuard CLI (requires admin ΓÇö bridge must run as Administrator)
@@ -1435,7 +1633,7 @@ app.post('/api/wireguard/install', async (req, res) => {
     await new Promise(r => setTimeout(r, 3000));
 
     // Verify tunnel is active
-    const show = await runWg('show', WIREGUARD_TUNNEL_NAME).catch(() => '');
+    const show = await runWg('show', effectiveTunnelName).catch(() => '');
     const active = show.includes('interface:') || show.includes('listening port');
 
     res.json({
@@ -1444,7 +1642,7 @@ app.post('/api/wireguard/install', async (req, res) => {
       vpnIp,
       confPath: tempConfPath,
       message: active
-        ? `WireGuard tunnel "${WIREGUARD_TUNNEL_NAME}" is active on ${vpnIp}`
+        ? `WireGuard tunnel "${effectiveTunnelName}" is active on ${vpnIp}`
         : `Tunnel installed but not yet active. If it stays inactive, open WireGuard app and import: ${tempConfPath}`,
     });
   } catch (err) {
@@ -1874,19 +2072,55 @@ app.get('/api/school/boarding/sessions/:id', requireSchoolToken, async (req, res
 app.get('/api/school/photo', async (req, res) => {
   const url = req.query.url;
   if (!url) return res.status(400).json({ error: 'url param required' });
-  // Use stored school token (works for img src calls that can't set headers)
+
+  const roomKey = String(req.query.roomKey || req.query.room_id || req.query.dormitory_id || req.query.room || 'all-rooms');
+  const studentId = String(req.query.studentId || req.query.student_id || 'unknown-student');
   const token = req.headers['authorization']?.replace('Bearer ', '') || schoolAuthToken;
+
+  const localPath = resolveLocalPhotoPath(studentId, roomKey, PHOTO_CACHE_ROOT);
+  const localExists = fs.existsSync(localPath);
+
+  if (localExists) {
+    const stat = fs.statSync(localPath);
+    const isFresh = !shouldRefreshPhotoCache({ updatedAt: stat.mtimeMs }, Date.now());
+    if (isFresh) {
+      res.set('Content-Type', 'image/jpeg');
+      res.set('Cache-Control', 'public, max-age=300');
+      return res.sendFile(localPath);
+    }
+  }
+
   try {
     const headers = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
     const photoRes = await fetch(url, { headers });
-    if (!photoRes.ok) return res.status(photoRes.status).send('Not found');
+    if (!photoRes.ok) {
+      if (localExists) return res.sendFile(localPath);
+      return res.status(photoRes.status).send('Not found');
+    }
+    const buffer = Buffer.from(await photoRes.arrayBuffer());
+    try { fs.mkdirSync(path.dirname(localPath), { recursive: true }); fs.writeFileSync(localPath, buffer); } catch {}
     res.set('Content-Type', photoRes.headers.get('content-type') || 'image/jpeg');
-    res.set('Cache-Control', 'public, max-age=3600');
-    const buffer = await photoRes.arrayBuffer();
-    res.send(Buffer.from(buffer));
+    res.set('Cache-Control', 'public, max-age=300');
+    return res.send(buffer);
   } catch (err) {
+    if (localExists) return res.sendFile(localPath);
     res.status(502).send('Photo fetch failed');
+  }
+});
+
+app.post('/api/school/photos/sync-room', async (req, res) => {
+  try {
+    const { roomKey = 'all-rooms', deviceId = 'tablet', students: studentsList = [], token } = req.body || {};
+    const result = await syncRoomPhotoCache({
+      roomKey,
+      deviceId,
+      studentsList,
+      token: token || schoolAuthToken,
+    });
+    res.json({ success: true, ...result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error?.message || 'Photo sync failed' });
   }
 });
 

@@ -1,7 +1,7 @@
-﻿#Requires -RunAsAdministrator
+#Requires -RunAsAdministrator
 <#
 .SYNOPSIS
-    EcaAfrica - Complete New Tablet Setup
+    EcaAfrica — Complete New Tablet Setup
     Run ONCE on a brand new Windows tablet. Does everything automatically.
 
 .USAGE
@@ -13,7 +13,7 @@ $ErrorActionPreference = "Continue"
 $ProgressPreference    = "SilentlyContinue"
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction SilentlyContinue
 
-# ---- Configuration - edit DEVICE_IP and DEVICE_ID before deploying ----
+# ── Configuration — edit DEVICE_IP and DEVICE_ID before deploying ─────────────
 $INSTALL_DIR   = "C:\EcaAfrica"
 $GITHUB_REPO   = "https://github.com/Byiringiro24/Tablet_Setup.git"
 $GITHUB_BRANCH = "Testing-Branch"
@@ -23,7 +23,7 @@ $TABLET_UUID   = ""                      # Fill after Super Admin registers tabl
 $WG_SERVER     = "169.58.124.150:51820"
 $BACKEND_PORT  = 5000
 $FRONTEND_PORT = 3000
-# 
+# ─────────────────────────────────────────────────────────────────────────────
 
 $LOG_FILE = "$env:TEMP\ecaafrica-setup-$(Get-Date -f 'yyyyMMdd-HHmmss').log"
 Start-Transcript -Path $LOG_FILE -Append -ErrorAction SilentlyContinue
@@ -31,7 +31,7 @@ Start-Transcript -Path $LOG_FILE -Append -ErrorAction SilentlyContinue
 function Write-Step($n, $msg) {
     Write-Host ""
     Write-Host "  [$n] $msg" -ForegroundColor Cyan
-    Write-Host "  ------------------------------------------------------------" -ForegroundColor DarkGray
+    Write-Host "  $('─' * 60)" -ForegroundColor DarkGray
 }
 function Write-OK($msg)   { Write-Host "      OK  $msg" -ForegroundColor Green }
 function Write-Warn($msg) { Write-Host "      !!  $msg" -ForegroundColor Yellow }
@@ -169,11 +169,11 @@ function Wait-ForService($name, $seconds = 30) {
     return $false
 }
 
-# 
+# ═══════════════════════════════════════════════════════════════════
 Write-Step "1/10" "Installing required software"
-# 
+# ═══════════════════════════════════════════════════════════════════
 
-#  Node.js 
+# ── Node.js ──
 Refresh-Path
 $nodeExe = Find-Exe "node"
 if ($nodeExe) {
@@ -194,7 +194,7 @@ if ($nodeExe) {
     }
 }
 
-#  .NET x86 SDK (needed for FKBridge build; supports 8.x and 10.x) 
+# ── .NET x86 SDK (needed for FKBridge build; supports 8.x and 10.x) ──
 $dotnetSdk = & dotnet --list-sdks 2>&1 | Where-Object { $_ -match "^(8|10)\." }
 if ($dotnetSdk) {
     Write-OK ".NET x86 SDK already installed: $($dotnetSdk | Select-Object -First 1)"
@@ -204,11 +204,11 @@ if ($dotnetSdk) {
     if ($installed) {
         Write-OK ".NET x86 SDK 10.0.401 installed or repaired"
     } else {
-        Write-Warn ".NET x86 SDK 10.0.401 could not be installed - FKBridge build may fail"
+        Write-Warn ".NET x86 SDK 10.0.401 could not be installed — FKBridge build may fail"
     }
 }
 
-#  Git 
+# ── Git ──
 Refresh-Path
 $gitExe = Find-Exe "git"
 if ($gitExe) {
@@ -224,11 +224,11 @@ if ($gitExe) {
         $gitExe = Find-Exe "git"
         Write-OK "Git installed: $gitExe"
     } catch {
-        Write-Warn "Git download failed - install from https://git-scm.com/download/win"
+        Write-Warn "Git download failed — install from https://git-scm.com/download/win"
     }
 }
 
-#  WireGuard 
+# ── WireGuard ──
 if (Test-Path "C:\Program Files\WireGuard\wireguard.exe") {
     Write-OK "WireGuard already installed"
 } else {
@@ -239,11 +239,11 @@ if (Test-Path "C:\Program Files\WireGuard\wireguard.exe") {
         Start-Process $wgInstaller -ArgumentList "/S" -Wait
         Write-OK "WireGuard installed"
     } catch {
-        Write-Warn "WireGuard download failed - install from https://www.wireguard.com/install/"
+        Write-Warn "WireGuard download failed — install from https://www.wireguard.com/install/"
     }
 }
 
-#  Google Chrome 
+# ── Google Chrome ──
 if (Test-Path "C:\Program Files\Google\Chrome\Application\chrome.exe") {
     Write-OK "Chrome already installed"
 } else {
@@ -255,7 +255,7 @@ if (Test-Path "C:\Program Files\Google\Chrome\Application\chrome.exe") {
         Start-Process $chromeInstaller -ArgumentList "/silent /install" -Wait
         Write-OK "Chrome installed"
     } catch {
-        Write-Warn "Chrome download failed - install from https://www.google.com/chrome/"
+        Write-Warn "Chrome download failed — install from https://www.google.com/chrome/"
     }
 }
 
@@ -279,12 +279,12 @@ Write-OK "Using Node.js: $nodeExe"
 Write-OK "Using npm:     $npmExe"
 Write-OK "Using git:     $gitExe"
 
-# 
+# ═══════════════════════════════════════════════════════════════════
 Write-Step "2/10" "Cloning / updating code from GitHub"
-# 
+# ═══════════════════════════════════════════════════════════════════
 
 if (Test-Path "$INSTALL_DIR\.git") {
-    Write-Info "Repo already exists - pulling latest..."
+    Write-Info "Repo already exists — pulling latest..."
     Push-Location $INSTALL_DIR
     & $gitExe fetch origin $GITHUB_BRANCH 2>&1 | Out-Null
     & $gitExe checkout $GITHUB_BRANCH 2>&1 | Out-Null
@@ -293,7 +293,7 @@ if (Test-Path "$INSTALL_DIR\.git") {
     Write-OK "Updated to latest $GITHUB_BRANCH"
 } else {
     if (Test-Path $INSTALL_DIR) {
-        Write-Warn "$INSTALL_DIR exists but is not a git repo - removing and re-cloning..."
+        Write-Warn "$INSTALL_DIR exists but is not a git repo — removing and re-cloning..."
         Remove-Item $INSTALL_DIR -Recurse -Force
     }
     Write-Info "Cloning from GitHub..."
@@ -314,9 +314,9 @@ $NSSM_EXE     = "$TOOLS_DIR\nssm.exe"
 
 New-Item -ItemType Directory -Force -Path $LOG_DIR, $TOOLS_DIR | Out-Null
 
-# 
+# ═══════════════════════════════════════════════════════════════════
 Write-Step "3/10" "Writing configuration files"
-# 
+# ═══════════════════════════════════════════════════════════════════
 
 New-Item -ItemType Directory -Force -Path "$BACKEND_DIR\data" | Out-Null
 
@@ -358,9 +358,9 @@ if (-not (Test-Path "$BACKEND_DIR\data\students.json")) {
     [System.IO.File]::WriteAllText("$BACKEND_DIR\data\students.json", "[]", [System.Text.UTF8Encoding]::new($false))
 }
 
-# 
+# ═══════════════════════════════════════════════════════════════════
 Write-Step "4/10" "Installing dependencies and building"
-# 
+# ═══════════════════════════════════════════════════════════════════
 
 # Backend
 Write-Info "npm install (backend) using retry-safe fallback..."
@@ -376,7 +376,7 @@ finally {
     Pop-Location
 }
 
-# FKBridge  .NET build
+# FKBridge — .NET build
 Write-Info "dotnet build FKBridge (Release)..."
 $dotnetCmd = Get-Command dotnet -ErrorAction SilentlyContinue
 if ($dotnetCmd) { $dotnetExe = $dotnetCmd.Source } else { $dotnetExe = "dotnet" }
@@ -385,7 +385,7 @@ $buildOut = & $dotnetExe build -c Release 2>&1
 if ($LASTEXITCODE -eq 0) {
     Write-OK "FKBridge.exe built successfully"
 } else {
-    Write-Warn "FKBridge build issues - check .NET x86 SDK (8.x/10.x) is installed"
+    Write-Warn "FKBridge build issues — check .NET x86 SDK (8.x/10.x) is installed"
     $buildOut | Where-Object { $_ -match "error" } | ForEach-Object { Write-Warn $_ }
 }
 Pop-Location
@@ -394,7 +394,7 @@ $fkBridgeExe = "$FKBRIDGE_DIR\bin\Release\net8.0\FKBridge.exe"
 if (Test-Path $fkBridgeExe) {
     Write-OK "FKBridge.exe confirmed at: $fkBridgeExe"
 } else {
-    Write-Warn "FKBridge.exe not found - device commands will not work until it is built"
+    Write-Warn "FKBridge.exe not found — device commands will not work until it is built"
 }
 
 # Frontend
@@ -411,7 +411,7 @@ finally {
     Pop-Location
 }
 
-Write-Info "npm run build (frontend - takes 2-3 minutes)..."
+Write-Info "npm run build (frontend — takes 2-3 minutes)..."
 $env:NODE_ENV = "production"
 Push-Location $FRONTEND_DIR
 try {
@@ -421,7 +421,7 @@ try {
     if ($LASTEXITCODE -eq 0) {
         Write-OK "Frontend build complete"
     } else {
-        Write-Warn "Frontend build had issues - service may not start until fixed"
+        Write-Warn "Frontend build had issues — service may not start until fixed"
     }
 }
 catch {
@@ -431,9 +431,9 @@ finally {
     Pop-Location
 }
 
-# 
+# ═══════════════════════════════════════════════════════════════════
 Write-Step "5/10" "Setting up NSSM service manager"
-# 
+# ═══════════════════════════════════════════════════════════════════
 
 if (-not (Test-Path $NSSM_EXE)) {
     Write-Info "Downloading NSSM..."
@@ -452,9 +452,9 @@ if (-not (Test-Path $NSSM_EXE)) {
     Write-OK "NSSM: $NSSM_EXE"
 }
 
-# 
+# ═══════════════════════════════════════════════════════════════════
 Write-Step "6/10" "Installing Windows services (auto-start as SYSTEM)"
-# 
+# ═══════════════════════════════════════════════════════════════════
 
 function Remove-ServiceIfExists($name) {
     $svc = Get-Service $name -ErrorAction SilentlyContinue
@@ -466,7 +466,7 @@ function Remove-ServiceIfExists($name) {
 
 function New-EcaService($name, $exe, $args, $workDir, $display, $desc, $depend) {
     Remove-ServiceIfExists $name
-    # NSSM needs exe and args as separate calls - combine exe+args as full command
+    # NSSM needs exe and args as separate calls — combine exe+args as full command
     & $NSSM_EXE install $name $exe $args | Out-Null
     & $NSSM_EXE set $name AppDirectory    $workDir      | Out-Null
     & $NSSM_EXE set $name DisplayName     $display      | Out-Null
@@ -483,7 +483,7 @@ function New-EcaService($name, $exe, $args, $workDir, $display, $desc, $depend) 
     sc.exe failure $name reset= 86400 actions= restart/5000/restart/10000/restart/30000 | Out-Null
 }
 
-# EcaAfrica-Bridge  runs node server.js as SYSTEM
+# EcaAfrica-Bridge — runs node server.js as SYSTEM
 New-EcaService `
     "EcaAfrica-Bridge" `
     $nodeExe `
@@ -494,7 +494,7 @@ New-EcaService `
     "Tcpip"
 Write-OK "EcaAfrica-Bridge installed (SYSTEM, auto-start)"
 
-# EcaAfrica-Frontend  runs next start via node directly (not npm/cmd)
+# EcaAfrica-Frontend — runs next start via node directly (not npm/cmd)
 # Using node + full path to next script avoids cmd.exe/npm PATH issues under SYSTEM
 $nextMainJs = "$FRONTEND_DIR\node_modules\next\dist\bin\next"
 if (Test-Path "$nextMainJs") {
@@ -520,9 +520,9 @@ if (Test-Path "$nextMainJs") {
 }
 Write-OK "EcaAfrica-Frontend installed (SYSTEM, auto-start)"
 
-# 
+# ═══════════════════════════════════════════════════════════════════
 Write-Step "7/10" "Configuring WireGuard auto-start"
-# 
+# ═══════════════════════════════════════════════════════════════════
 
 foreach ($svcName in @("WireGuard", "WireGuardManager")) {
     $s = Get-Service $svcName -ErrorAction SilentlyContinue
@@ -530,9 +530,9 @@ foreach ($svcName in @("WireGuard", "WireGuardManager")) {
         sc.exe config $svcName start= auto | Out-Null
         sc.exe failure $svcName reset= 86400 actions= restart/3000/restart/5000/restart/10000 | Out-Null
         if ($s.Status -ne "Running") { Start-Service $svcName -ErrorAction SilentlyContinue }
-        Write-OK "$svcName - auto-start, crash-restart"
+        Write-OK "$svcName — auto-start, crash-restart"
     } else {
-        Write-Warn "$svcName not found - WireGuard may not be installed"
+        Write-Warn "$svcName not found — WireGuard may not be installed"
     }
 }
 
@@ -540,21 +540,21 @@ $wgTunnel = Get-Service "WireGuardTunnel`$EcareAfrica" -ErrorAction SilentlyCont
 if ($wgTunnel) {
     sc.exe config "WireGuardTunnel`$EcareAfrica" start= auto | Out-Null
     sc.exe failure "WireGuardTunnel`$EcareAfrica" reset= 86400 actions= restart/5000/restart/10000/restart/30000 | Out-Null
-    Write-OK "WireGuard tunnel EcareAfrica - auto-start"
+    Write-OK "WireGuard tunnel EcareAfrica — auto-start"
 } else {
-    Write-Warn "WireGuard tunnel not configured yet - use the WireGuard VPN wizard after setup"
+    Write-Warn "WireGuard tunnel not configured yet — use the WireGuard VPN wizard after setup"
 }
 
-# 
-Write-Step "8/10" "System hardening - permanent admin, no UAC, auto-recover"
-# 
+# ═══════════════════════════════════════════════════════════════════
+Write-Step "8/10" "System hardening — permanent admin, no UAC, auto-recover"
+# ═══════════════════════════════════════════════════════════════════
 
-# Suppress UAC  dedicated kiosk tablet
+# Suppress UAC — dedicated kiosk tablet
 $uacKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
 Set-ItemProperty $uacKey "EnableLUA"                  0 -Type DWord -ErrorAction SilentlyContinue
 Set-ItemProperty $uacKey "ConsentPromptBehaviorAdmin" 0 -Type DWord -ErrorAction SilentlyContinue
 Set-ItemProperty $uacKey "PromptOnSecureDesktop"      0 -Type DWord -ErrorAction SilentlyContinue
-Write-OK "UAC suppressed - no prompts ever"
+Write-OK "UAC suppressed — no prompts ever"
 
 # Disable Fast Startup
 Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power" "HiberbootEnabled" 0 -Type DWord -ErrorAction SilentlyContinue
@@ -564,11 +564,11 @@ Write-OK "Fast Startup disabled"
 Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control" "ServicesPipeTimeout" 120000 -Type DWord -ErrorAction SilentlyContinue
 Write-OK "Service startup timeout: 120s"
 
-# PowerShell execution policy  allow scripts without prompts
+# PowerShell execution policy — allow scripts without prompts
 Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope LocalMachine -Force -ErrorAction SilentlyContinue
 Write-OK "ExecutionPolicy set to Bypass (scripts run without prompts)"
 
-# Boot health-check scheduled task - restarts any stopped service 90s after boot
+# Boot health-check scheduled task — restarts any stopped service 90s after boot
 $bootScript = @'
 Start-Sleep -Seconds 90
 $svcs = @('EcaAfrica-Bridge','EcaAfrica-Frontend','WireGuardManager')
@@ -605,16 +605,16 @@ Register-ScheduledTask "EcaAfrica-Boot-Ensure" `
     -Description "Ensures EcaAfrica + WireGuard run on every boot" -Force | Out-Null
 Write-OK "Boot health-check task registered (runs as SYSTEM at every boot + login)"
 
-# 
-Write-Step "9/10" "Kiosk auto-open  Chrome launches dashboard on every login"
-# 
+# ═══════════════════════════════════════════════════════════════════
+Write-Step "9/10" "Kiosk auto-open — Chrome launches dashboard on every login"
+# ═══════════════════════════════════════════════════════════════════
 
 $chromePath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
 if (Test-Path $chromePath) {
-    # Use scheduled task instead of startup folder - gives services time to start first
+    # Use scheduled task instead of startup folder — gives services time to start first
     Unregister-ScheduledTask "EcaAfrica-OpenDashboard" -Confirm:$false -ErrorAction SilentlyContinue
 
-    $chromeArg = "--kiosk http://localhost:$FRONTEND_PORT --disable-infobars --no-first-run --disable-session-crashed-bubble"
+    $chromeArg  = "--kiosk http://localhost:$FRONTEND_PORT --disable-infobars --no-first-run --disable-session-crashed-bubble"
     $chromeAction = New-ScheduledTaskAction -Execute $chromePath -Argument $chromeArg
     # Delay 30s after login so services have time to start
     $chromeTrigger = New-ScheduledTaskTrigger -AtLogOn
@@ -622,15 +622,18 @@ if (Test-Path $chromePath) {
     $chromeSettings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Hours 12) -MultipleInstances IgnoreNew
     $chromePrincipal = New-ScheduledTaskPrincipal -GroupId "BUILTIN\Users" -RunLevel Highest
 
-    Register-ScheduledTask -TaskName "EcaAfrica-OpenDashboard" -Action $chromeAction -Trigger $chromeTrigger -Settings $chromeSettings -Principal $chromePrincipal -Description "Opens EcaAfrica dashboard in Chrome 30s after login" -Force | Out-Null
-    Write-OK "Chrome kiosk scheduled task - opens http://localhost:$FRONTEND_PORT at login (+30s delay)"
+    Register-ScheduledTask "EcaAfrica-OpenDashboard" `
+        -Action $chromeAction -Trigger $chromeTrigger `
+        -Settings $chromeSettings -Principal $chromePrincipal `
+        -Description "Opens EcaAfrica dashboard in Chrome 30s after login" -Force | Out-Null
+    Write-OK "Chrome kiosk scheduled task — opens http://localhost:$FRONTEND_PORT at login (+30s delay)"
 } else {
-    Write-Warn "Chrome not found - install Chrome for automatic dashboard launch"
+    Write-Warn "Chrome not found — install Chrome for automatic dashboard launch"
 }
 
-# 
+# ═══════════════════════════════════════════════════════════════════
 Write-Step "10/10" "Starting services and verifying"
-# 
+# ═══════════════════════════════════════════════════════════════════
 
 Write-Info "Starting WireGuard Manager..."
 Start-Service "WireGuardManager" -ErrorAction SilentlyContinue
@@ -640,13 +643,13 @@ Write-Info "Starting EcaAfrica-Bridge..."
 Start-Service "EcaAfrica-Bridge" -ErrorAction SilentlyContinue
 $bridgeUp = Wait-ForService "EcaAfrica-Bridge" 30
 if ($bridgeUp) { Write-OK "EcaAfrica-Bridge RUNNING" }
-else { Write-Warn "EcaAfrica-Bridge slow to start - check $LOG_DIR\EcaAfrica-Bridge.err.log" }
+else { Write-Warn "EcaAfrica-Bridge slow to start — check $LOG_DIR\EcaAfrica-Bridge.err.log" }
 
 Write-Info "Starting EcaAfrica-Frontend..."
 Start-Service "EcaAfrica-Frontend" -ErrorAction SilentlyContinue
 $frontendUp = Wait-ForService "EcaAfrica-Frontend" 30
 if ($frontendUp) { Write-OK "EcaAfrica-Frontend RUNNING" }
-else { Write-Warn "EcaAfrica-Frontend slow to start - check $LOG_DIR\EcaAfrica-Frontend.err.log" }
+else { Write-Warn "EcaAfrica-Frontend slow to start — check $LOG_DIR\EcaAfrica-Frontend.err.log" }
 
 # HTTP health check
 Write-Info "Waiting 10s then checking HTTP..."
@@ -657,46 +660,46 @@ try {
     $h = Invoke-RestMethod "http://localhost:$BACKEND_PORT/api/health" -TimeoutSec 10
     $backendOk = $true
     Write-OK "Backend  http://localhost:$BACKEND_PORT  status=$($h.status)  bridge=$($h.bridgeReady)"
-} catch { Write-Warn "Backend HTTP not yet ready - may still be starting" }
+} catch { Write-Warn "Backend HTTP not yet ready — may still be starting" }
 try {
     $null = Invoke-WebRequest "http://localhost:$FRONTEND_PORT" -TimeoutSec 15 -UseBasicParsing
     $frontendOk = $true
     Write-OK "Frontend http://localhost:$FRONTEND_PORT  reachable"
-} catch { Write-Warn "Frontend HTTP not yet ready - may still be compiling" }
+} catch { Write-Warn "Frontend HTTP not yet ready — may still be compiling" }
 
 Stop-Transcript -ErrorAction SilentlyContinue
 
-# 
+# ═══════════════════════════════════════════════════════════════════
 # SUMMARY
-# 
+# ═══════════════════════════════════════════════════════════════════
 Write-Host ""
-Write-Host "------------------------------------------------------------" -ForegroundColor Green
+Write-Host "  ════════════════════════════════════════════════════════" -ForegroundColor Green
 Write-Host "    NEW TABLET SETUP COMPLETE" -ForegroundColor Green
-Write-Host "------------------------------------------------------------" -ForegroundColor Green
+Write-Host "  ════════════════════════════════════════════════════════" -ForegroundColor Green
 Write-Host ""
 Write-Host "  Everything runs as SYSTEM (full Administrator) automatically:" -ForegroundColor White
-Write-Host "   * EcaAfrica-Bridge   - port $BACKEND_PORT  - auto-start, SYSTEM"
-Write-Host "   * EcaAfrica-Frontend - port $FRONTEND_PORT - auto-start, SYSTEM"
-Write-Host "   * WireGuard Manager  - auto-start"
-Write-Host "   * Chrome opens dashboard 30s after every login"
-Write-Host "   * Boot health-check task ensures services survive reboots"
-Write-Host "   * UAC suppressed - zero prompts, zero manual clicks"
+Write-Host "   • EcaAfrica-Bridge   — port $BACKEND_PORT  — auto-start, SYSTEM"
+Write-Host "   • EcaAfrica-Frontend — port $FRONTEND_PORT  — auto-start, SYSTEM"
+Write-Host "   • WireGuard Manager  — auto-start"
+Write-Host "   • Chrome opens dashboard 30s after every login"
+Write-Host "   • Boot health-check task ensures services survive reboots"
+Write-Host "   • UAC suppressed — zero prompts, zero manual clicks"
 Write-Host ""
-Write-Host "  --- NEXT STEPS (do these after reboot) --------------------" -ForegroundColor Yellow
+Write-Host "  ── NEXT STEPS (do these after reboot) ─────────────────" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "  A) Set the FK623 device IP (if different from $DEVICE_IP):"
-Write-Host "     Open http://localhost:$FRONTEND_PORT -> sidebar -> Developer"
-Write-Host "     Password: admin1234 -> update IP Address"
+Write-Host "     Open http://localhost:$FRONTEND_PORT → sidebar → Developer"
+Write-Host "     Password: admin1234 → update IP Address"
 Write-Host ""
 Write-Host "  B) Register this tablet in Super Admin portal:"
-Write-Host "     https://backend.ecareafrica.net -> Tablets -> Add Tablet"
+Write-Host "     https://backend.ecareafrica.net → Tablets → Add Tablet"
 Write-Host "     Then edit $BACKEND_DIR\.env"
 Write-Host "     Set: TABLET_UUID=<paste UUID here>"
 Write-Host "     Run: Restart-Service EcaAfrica-Bridge"
 Write-Host ""
 Write-Host "  C) Set up WireGuard VPN:"
-Write-Host "     http://localhost:$FRONTEND_PORT -> sidebar -> WireGuard VPN"
-Write-Host "     Password: admin1234 -> follow Steps 1-5"
+Write-Host "     http://localhost:$FRONTEND_PORT → sidebar → WireGuard VPN"
+Write-Host "     Password: admin1234 → follow Steps 1-5"
 Write-Host ""
 Write-Host "  Setup log: $LOG_FILE" -ForegroundColor Gray
 Write-Host ""
@@ -710,6 +713,3 @@ if ($reboot -match "^[Yy]") {
     Write-Host "  Reboot manually when ready." -ForegroundColor Yellow
     Read-Host "  Press Enter to close"
 }
-
-
-

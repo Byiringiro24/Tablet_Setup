@@ -22,6 +22,60 @@ export default function LiveAttendanceScreen({
     return () => { clearTimeout(t); clearInterval(tick); };
   }, []);
 
+  const raw = log.rawData ?? {};
+  const deviceUserId = String(
+    log.studentDeviceId ??
+    log.deviceUserId ??
+    raw.deviceUserId ??
+    raw.userId ??
+    raw.studentDeviceId ??
+    "—"
+  );
+
+  const studentIdLabel = String(
+    log.studentId && log.studentId !== deviceUserId ? log.studentId : "—"
+  );
+
+  const studentType = (() => {
+    const value = (
+      log.studentType ??
+      log.boardingStatus ??
+      raw.studentType ??
+      raw.boardingStatus ??
+      raw.boarding_status ??
+      raw.student_type ??
+      raw.memberType ??
+      raw.status ??
+      ""
+    );
+
+    if (!value || typeof value !== "string") return "Day Student";
+    const normalized = value.toLowerCase();
+    if (normalized.includes("boarding") || normalized.includes("boarder")) return "Boarding Student";
+    if (normalized.includes("day")) return "Day Student";
+    if (normalized.includes("resident")) return "Boarding Student";
+    if (normalized.includes("non boarding") || normalized.includes("non-boarding")) return "Day Student";
+    if (String(raw.isBoarding).toLowerCase() === "true") return "Boarding Student";
+    if (String(raw.isBoarding).toLowerCase() === "false") return "Day Student";
+    return value;
+  })();
+
+  const roomDisplay = (() => {
+    const value = (
+      log.roomName ??
+      log.dormitoryName ??
+      raw.roomName ??
+      raw.dormitoryName ??
+      raw.room_name ??
+      raw.room ??
+      raw.dormitory ??
+      raw.hostel ??
+      raw.block ??
+      ""
+    );
+    return value ? String(value) : "—";
+  })();
+
   const method = log.authenticationMethod || "Unknown";
   const s      = (log.status || "").toLowerCase();
   const isLate   = s.includes("late");
@@ -89,10 +143,20 @@ export default function LiveAttendanceScreen({
             {log.studentName}
           </p>
           <p className="mt-2 text-xl sm:text-2xl font-bold text-cyan-400">
-            {log.studentId || log.studentDeviceId}
+            {deviceUserId}
           </p>
+          <div className="mt-2 flex flex-wrap items-center justify-center gap-2 text-xs sm:text-sm text-slate-300">
+            {studentIdLabel !== "—" && (
+              <span className="rounded-full border border-slate-700 bg-slate-800/70 px-2.5 py-1">
+                Student ID: {studentIdLabel}
+              </span>
+            )}
+            <span className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1 text-cyan-300">
+              {studentType}
+            </span>
+          </div>
           {log.className && (
-            <p className="mt-1 text-sm sm:text-base text-slate-400">
+            <p className="mt-2 text-sm sm:text-base text-slate-400">
               {log.className}{log.section ? ` · Section ${log.section}` : ""}
             </p>
           )}
@@ -109,8 +173,12 @@ export default function LiveAttendanceScreen({
         <div className="mt-6 grid grid-cols-2 gap-3 text-sm">
           {[
             { label: "Method", value: method },
-            { label: "Time",   value: new Date(log.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) },
-            { label: "Date",   value: new Date(log.timestamp).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" }) },
+            { label: "Device User ID", value: deviceUserId },
+            { label: "Type", value: studentType },
+            { label: "Room / Dormitory", value: roomDisplay },
+            { label: "Time", value: new Date(log.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) },
+            { label: "Date", value: new Date(log.timestamp).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" }) },
+            { label: "Student ID", value: studentIdLabel },
             { label: "Device", value: log.deviceId || "—" },
           ].map(item => (
             <div key={item.label} className="rounded-xl border border-slate-800 bg-slate-800/60 p-3 text-center">
