@@ -903,8 +903,12 @@ function attendanceFromLog(log) {
       if (!u) return '';
       if (u.startsWith('http://localhost') || u.startsWith('data:')) return u;
       const port = Number(process.env.PORT || PORT || 5000);
-      return `http://localhost:${port}/api/school/photo?url=${encodeURIComponent(u)}`;
+      // Include studentId and roomKey so the photo proxy caches under the correct path
+      const sid = encodeURIComponent(student?.studentId || log.userId || 'unknown');
+      const rk  = encodeURIComponent(student?.dormitoryName || student?.roomName || 'all-rooms');
+      return `http://localhost:${port}/api/school/photo?url=${encodeURIComponent(u)}&studentId=${sid}&roomKey=${rk}`;
     })(),
+    bootId: BOOT_ID,     // allows backend to namespace dedup by device-reset cycle
     verified: true,
     rawData: {
       ...log,
@@ -1242,11 +1246,12 @@ app.post('/api/device/users', async (req, res) => {
   }
   saveStudents();
 
-  // Download and cache the photo immediately if we have one
+  // Download and cache the photo immediately if we have one.
+  // Use 'all-rooms' as the roomKey so it matches what attendanceFromLog uses.
   if (photoUrl) {
     const token = schoolAuthToken || null;
     syncRoomPhotoCache({
-      roomKey: 'device-push',
+      roomKey: 'all-rooms',
       deviceId: currentDevice?.deviceId || 'tablet',
       studentsList: [{ id: userId, student_id: userId, photo_url: photoUrl, photoUrl }],
       token,
@@ -1306,9 +1311,10 @@ app.post('/api/device/push-students', async (req, res) => {
         photoUrl:  s.photoUrl || s.photo_url || '',
       }));
     if (photoStudents.length > 0) {
-      // Fire and forget — don't block the push response
+      // Fire and forget — don't block the push response.
+      // Use 'all-rooms' so photos match what attendanceFromLog resolves.
       syncRoomPhotoCache({
-        roomKey:      'device-push',
+        roomKey:      'all-rooms',
         deviceId:     currentDevice?.deviceId || 'tablet',
         studentsList: photoStudents,
         token,
@@ -1923,10 +1929,38 @@ app.post('/api/wireguard/ping', async (req, res) => {
 // All relay endpoints require ?token= or Authorization header.
 // ============================================================
 
-
 // In-memory token store (one token per tablet session)
 let schoolAuthToken = null;
+let schoolAuthRefreshToken = null;   // stored for auto-refresh
+let schoolAuthTokenSetAt = 0;        // epoch ms when token was issued
 let schoolUser = null;
+
+// ── Auto-refresh the school token every 12 minutes ───────────────────────────
+// The school server issues 15-minute access tokens. We refresh 3 minutes early
+// so photo downloads, student syncs, and SSE never see a 401 due to expiry.
+// Refresh uses the stored refresh_token from the login response.
+setInterval(async () => {
+  if (!schoolAuthToken || !schoolAuthRefreshToken) return;
+  const ageMs = Date.now() - schoolAuthTokenSetAt;
+  if (ageMs < 12 * 60 * 1000) return; // not yet due
+  try {
+    const res = await fetch(`${SERVER_API_URL}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${schoolAuthRefreshToken}` },
+    });
+    const json = await res.json().catch(() => null);
+    const newToken = json?.data?.accessToken ?? json?.accessToken ?? null;
+    const newRefresh = json?.data?.refreshToken ?? json?.refreshToken ?? null;
+    if (newToken) {
+      schoolAuthToken = newToken;
+      schoolAuthTokenSetAt = Date.now();
+      if (newRefresh) schoolAuthRefreshToken = newRefresh;
+      console.log('[school-auth] Token refreshed successfully');
+    }
+  } catch (err) {
+    console.warn('[school-auth] Auto-refresh failed:', err.message);
+  }
+}, 60_000); // check every 60 seconds
 
 // Helper: relay a request to the school server
 async function relayToServer(method, path, body, token) {
@@ -1949,6 +1983,8 @@ app.post('/api/school/login', async (req, res) => {
     const { status, json } = await relayToServer('POST', '/auth/login', { email, password }, null);
     if (json.success !== false && (json.data?.accessToken || json.accessToken)) {
       schoolAuthToken = json.data?.accessToken ?? json.accessToken;
+      schoolAuthRefreshToken = json.data?.refreshToken ?? json.refreshToken ?? null;
+      schoolAuthTokenSetAt = Date.now();
       schoolUser = json.data?.user ?? json.user ?? null;
       return res.json({ success: true, user: schoolUser, token: schoolAuthToken });
     }
@@ -1961,6 +1997,8 @@ app.post('/api/school/login', async (req, res) => {
 // POST /api/school/logout
 app.post('/api/school/logout', (req, res) => {
   schoolAuthToken = null;
+  schoolAuthRefreshToken = null;
+  schoolAuthTokenSetAt = 0;
   schoolUser = null;
   res.json({ success: true });
 });
