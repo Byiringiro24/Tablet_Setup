@@ -1,7 +1,7 @@
 ﻿const fs = require('fs');
 const path = require('path');
 
-const PHOTO_CACHE_TTL_MS = 5 * 60 * 1000;
+const PHOTO_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days — photos don't change often
 const DEFAULT_CACHE_ROOT = 'C:/EcaAfrica/cache/photos';
 
 function normalizeCacheRoot(rootPath) {
