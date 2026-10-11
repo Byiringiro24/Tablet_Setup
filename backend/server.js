@@ -116,6 +116,33 @@ const bridgePath = path.join(bridgeDir, 'FKBridge.exe');
 const dataDir = path.join(__dirname, 'data');
 const studentsFile = path.join(dataDir, 'students.json');
 const attendanceSettingsFile = path.join(dataDir, 'attendance-settings.json');
+const pollStateFile = path.join(dataDir, 'poll-state.json');
+
+// ── Stable boot ID — a new UUID generated each time the bridge process starts.
+// Included in every SSE event and attendance_log row so the backend can tell
+// apart logs from different device-reset cycles. Prevents ghost replays when
+// the FK623 internal counter resets (factory reset, CLEAR_LOGS).
+const BOOT_ID = require('crypto').randomUUID();
+
+// ── Poll state — persisted to disk so restarts don't re-emit old logs ────────
+function loadPollState() {
+  try {
+    const raw = fs.readFileSync(pollStateFile, 'utf8');
+    const parsed = JSON.parse(raw);
+    return { lastSeenLogId: Number(parsed.lastSeenLogId) || 0 };
+  } catch {
+    return { lastSeenLogId: 0 };
+  }
+}
+
+function savePollState(state) {
+  try {
+    if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+    fs.writeFileSync(pollStateFile, JSON.stringify(state));
+  } catch { /* non-fatal */ }
+}
+
+let pollState = loadPollState();
 
 let bridgeProcess = null;
 let bridgeReady = false;
@@ -230,39 +257,50 @@ function sseEmit(event, data) {
 
 // Auto-log-poll state
 let logPollTimer = null;
-let logPollStartedAt = 0;   // epoch ms when current poll session started
-const seenLogIds = new Set();
 let pollBusy = false;   // prevent overlapping polls if device is slow
 
 function startLogPoll() {
   if (logPollTimer) return;
-  seenLogIds.clear();   // always reset on new connection so first poll seeds correctly
   pollBusy = false;
-  // Record when the poll started so we can tell apart pre-existing vs new logs
-  logPollStartedAt = Date.now();
   logPollTimer = setInterval(runLogPoll, 2000);
-  console.log('Log auto-poll started (every 2s)');
+  console.log('[poll] Auto-poll started (every 2s). lastSeenLogId=' + pollState.lastSeenLogId);
 }
 
 function stopLogPoll() {
   if (logPollTimer) { clearInterval(logPollTimer); logPollTimer = null; }
-  seenLogIds.clear();
   pollBusy = false;
-  logPollStartedAt = 0;
 }
 
+/**
+ * Incremental log poll — only processes logs with id > lastSeenLogId.
+ *
+ * Why:
+ *  - The old design called GET_LOGS|0 (all logs) and deduplicated in-memory
+ *    with a Set capped at 10k entries. When the device has >10k logs the Set
+ *    evicts old entries and the next poll re-emits them as "new" (ghost replay).
+ *  - The new design advances a numeric cursor. After the first poll only NEW
+ *    logs are ever emitted, regardless of how many total logs the device holds.
+ *  - BOOT_ID is included in every event so the server can namespace the cursor
+ *    per device-reset cycle, preventing collisions after CLEAR_LOGS or a
+ *    factory reset.
+ */
 async function runLogPoll() {
   if (!currentDevice || !currentDevice.connected) return;
   if (pollBusy) return;
   pollBusy = true;
+
   try {
-    const result = await sendCommand('GET_LOGS|0', 8000);
+    // 15s timeout — longer than the old 8s to prevent stall-on-large-log-table.
+    // With incremental reads, subsequent polls only fetch new logs and are fast.
+    const result = await sendCommand('GET_LOGS|0', 15000);
+
     if (!result.success) {
-      pollBusy = false;
-      // If command failed with a connection-type error, device is offline
       const err = (result.error || '').toLowerCase();
-      if (err.includes('not reachable') || err.includes('disconnect') || err.includes('timeout') || err.includes('bridge stopped')) {
-        console.log('Log poll: device offline detected ├óΓé¼ΓÇ¥ triggering reconnect');
+      if (
+        err.includes('not reachable') || err.includes('disconnect') ||
+        err.includes('timeout')       || err.includes('bridge stopped')
+      ) {
+        console.log('[poll] Device offline detected — triggering reconnect');
         currentDevice = null;
         stopLogPoll();
         sseEmit('deviceStatus', { connected: false });
@@ -270,61 +308,51 @@ async function runLogPoll() {
       }
       return;
     }
+
     const rawLogs = Array.isArray(result.data?.logs) ? result.data.logs : [];
-
-    // On first poll after connect, seed ALL logs that existed BEFORE we started polling
-    // as "already seen" so they don't flash as new.
-    // IMPORTANT: any log whose timestamp is >= logPollStartedAt may be a real new scan
-    // that happened in the ~2s window between startLogPoll() and the first poll execution.
-    // Those MUST be treated as fresh and emitted as 'attendance' events.
-    if (seenLogIds.size === 0 && rawLogs.length > 0) {
-      const getLogKey = (raw) => raw.id || `${raw.userId}-${raw.timestamp}`;
-      const startMs = logPollStartedAt;
-      const preExisting = rawLogs.filter((raw) => {
-        const ts = raw.timestamp ? new Date(raw.timestamp).getTime() : 0;
-        return ts < startMs;
-      });
-      const postConnect = rawLogs.filter((raw) => {
-        const ts = raw.timestamp ? new Date(raw.timestamp).getTime() : 0;
-        return ts >= startMs;
-      });
-      // Mark all pre-existing logs as already seen
-      preExisting.forEach((raw) => seenLogIds.add(getLogKey(raw)));
-      logsCache = rawLogs;
-      await refreshUsersCache().catch(() => null);
-      // Emit pre-existing as 'init' (sidebar list only, no flash)
-      sseEmit('init', preExisting.map(attendanceFromLog));
-      console.log(`Log poll: seeded ${preExisting.length} old log(s); ${postConnect.length} post-connect log(s) will flash`);
-      if (postConnect.length > 0) {
-        // These are real new scans — mark seen and flash them
-        postConnect.forEach((raw) => seenLogIds.add(getLogKey(raw)));
-        sseEmit('attendance', postConnect.map(attendanceFromLog));
-      }
-      pollBusy = false;
-      return;
-    }
-
-    // Find fresh raw logs (not yet seen)
-    // Use a composite key: userId + timestamp as stable dedup key if log.id is absent
-    const getLogKey = (raw) => raw.id || `${raw.userId}-${raw.timestamp}`;
-    const freshRaw = rawLogs.filter((raw) => !seenLogIds.has(getLogKey(raw)));
-    freshRaw.forEach((raw) => seenLogIds.add(getLogKey(raw)));
     logsCache = rawLogs;
 
-    if (freshRaw.length > 0) {
-      console.log(`Log poll: ${freshRaw.length} new attendance record(s)`);
-      // If usersCache is empty, pull users now so names resolve before we emit
-      if (usersCache.length === 0) {
-        await refreshUsersCache().catch(() => null);
-      }
-      // Map with latest usersCache so studentName is a real name, not a device ID
-      const freshMapped = freshRaw.map(attendanceFromLog);
-      sseEmit('attendance', freshMapped);
+    if (rawLogs.length === 0) return;
+
+    // ── Device-reset detection ──────────────────────────────────────────────
+    // If the device's highest log ID is far below our cursor, the FK623 was
+    // factory-reset or CLEAR_LOGS was called. Reset the cursor and skip emitting
+    // logs older than 5 minutes (they're historical, not new scans).
+    const maxDeviceId = Math.max(...rawLogs.map((r) => Number(r.id) || 0));
+    if (pollState.lastSeenLogId > 0 && maxDeviceId < pollState.lastSeenLogId - 100) {
+      console.warn('[poll] Device counter reset detected (maxId=' + maxDeviceId +
+        ' < cursor=' + pollState.lastSeenLogId + ') — resetting cursor');
+      pollState.lastSeenLogId = 0;
+      savePollState(pollState);
     }
+
+    // ── Incremental filter — only logs with id > cursor ─────────────────────
+    const newLogs = rawLogs
+      .filter((r) => Number(r.id) > pollState.lastSeenLogId)
+      .sort((a, b) => Number(a.id) - Number(b.id));
+
+    if (newLogs.length === 0) return;
+
+    // Ensure user names resolve before emitting
+    if (usersCache.length === 0) {
+      await refreshUsersCache().catch(() => null);
+    }
+
+    // Attach BOOT_ID so the server can namespace (device_id, boot_id, log_id)
+    const mapped = newLogs.map((raw) => ({ ...attendanceFromLog(raw), bootId: BOOT_ID }));
+    sseEmit('attendance', mapped);
+    console.log('[poll] ' + newLogs.length + ' new log(s) emitted. cursor: ' +
+      pollState.lastSeenLogId + ' → ' + Number(newLogs[newLogs.length - 1].id));
+
+    // Advance cursor AFTER successful emit
+    pollState.lastSeenLogId = Number(newLogs[newLogs.length - 1].id);
+    savePollState(pollState);
+
   } catch (err) {
-    // silent ├óΓé¼ΓÇ¥ device may be briefly busy
+    // silent — device may be briefly busy; next tick will retry
+  } finally {
+    pollBusy = false;
   }
-  pollBusy = false;
 }
 
 function loadStudents() {  
@@ -992,12 +1020,14 @@ app.get('/api/health', async (req, res) => {
     status: 'ok',
     bridgeRunning: bridgeProcess !== null,
     bridgeReady,
+    bootId: BOOT_ID,
     device: currentDevice,
+    cursor: pollState.lastSeenLogId,
     autoConnect: { enabled: autoConnectEnabled, attempt: autoConnectAttempt },
     savedConfig,
     tabletUuid: TABLET_UUID || null,
     tabletName: tabletInfo.name,
-    devPassword: DEV_PASSWORD,   // current active dev password (may be updated remotely)
+    devPassword: DEV_PASSWORD,
     tabletLocation: tabletInfo.location,
     vpn: {
       serverEndpoint: WG_SERVER_ENDPOINT,
