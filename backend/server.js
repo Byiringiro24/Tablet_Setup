@@ -272,6 +272,7 @@ function sseEmit(event, data) {
 
 // Auto-log-poll state
 let logPollTimer = null;
+const seenLogIds = new Set();
 let pollBusy = false;   // prevent overlapping polls if device is slow
 
 function startLogPoll() {
