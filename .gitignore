@@ -8,8 +8,10 @@ frontend/node_modules/
 frontend/.next/
 frontend/.turbo/
 node_modules/
-*.lock
 package-lock.json
+frontend/package-lock.json
+backend/package-lock.json
+frontend/tsconfig.tsbuildinfo
 
 # ── Local tablet data (unique per tablet — never commit) ──────────────────────
 backend/data/device-config.json
@@ -18,6 +20,7 @@ backend/data/wireguard-public.key
 backend/data/attendance-settings.json
 backend/data/poll-state.json
 backend/cache/
+backend/.env
 
 # ── Logs ──────────────────────────────────────────────────────────────────────
 logs/
@@ -29,30 +32,28 @@ logs/
 .env.production
 .env.*.local
 
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+
 # ── OS ────────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 desktop.ini
 
-# ── IDE ───────────────────────────────────────────────────────────────────────
-.vscode/
-.idea/
-*.suo
-*.user
-
-# ── Temp ──────────────────────────────────────────────────────────────────────
+# ── Temp / debug ──────────────────────────────────────────────────────────────
 .tmp/
 *.tmp
 *.bak
 *.bundle
 
-# ── Junk / old files — never re-add these ─────────────────────────────────────
+# ── Junk / old files — these should never come back ──────────────────────────
 *.docx
 *.docm
-jj.md
 pst\ gress.md
+jj.md
 testing_Comit
-"new changes to make according to the latest doc"
+new\ changes*
 updating\ Tablets.txt
 branch_structure.json
 deploy-to-server.sh
@@ -62,28 +63,29 @@ set-admin-permanent.ps1
 setup-new-tablet.ps1
 install-services.ps1
 uninstall-services.ps1
-"INSTALL (double-click me).bat"
+INSTALL\ *
 SETUP-NEW-TABLET.bat
 INSTALL-ROOT.md
 PRODUCTION-READINESS-VALIDATION.md
 QUICK-REFERENCE-GUIDE.md
+Super\ Admin*
 test_logins.ps1
 readme.md
 wireguard-setup.md
 Wireguard.md
-"Wireguard setup.md"
-"Wireguard Tunnel document setup setup.txt"
-"WireGuard*"
-"Wireguard*"
+Wireguard\ *
+WireGuard\ *
 database/
 "Tablet Setup Scripts/README.md"
 "Tablet Setup Scripts/Readme.docx"
-"Tablet Setup Scripts/Validate-TabletSetup.ps1"
-"Tablet Setup Scripts/install-deps.ps1"
-"Tablet Setup Scripts/start-*.ps1"
+"Tablet Setup Scripts/"
 scripts/deploy-repos.ps1
 scripts/ensure-install-root.ps1
 scripts/git-templates/
 scripts/install-git-hooks.ps1
 scripts/setup-machine.ps1
 scripts/update-repos.ps1
+frontend/README.md
+frontend/next.config.mjs
+frontend/postcss.config.mjs
+frontend/tailwind.config.ts
