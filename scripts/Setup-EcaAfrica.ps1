@@ -312,7 +312,7 @@ if ($dotnetX86) {
 
 # ── 11. Copy scripts into C:\EcaAfrica\scripts ────────────────
 Step "Installing runtime scripts"
-foreach ($f in @('Start-EcaAfrica.ps1','Repair-EcaAfrica.ps1','Common-EcaAfrica.ps1','Enroll-Tablet.ps1')) {
+foreach ($f in @('Start-EcaAfrica.ps1','Repair-EcaAfrica.ps1','Common-EcaAfrica.ps1','Enroll-Tablet.ps1','Run-Setup.cmd')) {
     $src = Join-Path $PSScriptRoot $f
     $dst = Join-Path $script:ScriptsDir $f
     if (Test-Path $src) {
@@ -321,6 +321,16 @@ foreach ($f in @('Start-EcaAfrica.ps1','Repair-EcaAfrica.ps1','Common-EcaAfrica.
     } else {
         L "$f not found beside Setup-EcaAfrica.ps1" 'WARN'
     }
+}
+# Copy config subfolder
+$cfgSrc = Join-Path $PSScriptRoot 'config'
+$cfgDst = Join-Path $script:ScriptsDir 'config'
+if (Test-Path $cfgSrc) {
+    Ensure-Dir $cfgDst
+    Copy-Item "$cfgSrc\*" $cfgDst -Force -Recurse
+    L "Installed config/ -> $cfgDst"
+} else {
+    L "config/ not found beside Setup-EcaAfrica.ps1" 'WARN'
 }
 
 # ── 12. Register scheduled task ───────────────────────────────

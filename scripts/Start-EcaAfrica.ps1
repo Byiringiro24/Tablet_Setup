@@ -109,6 +109,12 @@ if ($git -and (Test-Path (Join-Path $repo '.git'))) {
                     robocopy $src $dst /E /XD node_modules .next /XF .env .env.local /NFL /NDL /NJH /NJS /NP | Out-Null
                 }
             }
+            # Also keep the runtime scripts in sync with the repo's scripts/
+            $scriptsSrc = Join-Path $repo 'scripts'
+            if (Test-Path $scriptsSrc) {
+                robocopy $scriptsSrc $script:ScriptsDir /E /NFL /NDL /NJH /NJS /NP | Out-Null
+                L "Scripts updated from repo"
+            }
 
             # npm install backend
             if ($npm) {
@@ -172,7 +178,6 @@ if ($git -and (Test-Path (Join-Path $repo '.git'))) {
     } else {
         L "No update needed"
     }
-} else {
 } else {
     # Repo not cloned yet or git unavailable - try to clone now
     if ($git -and -not (Test-Path (Join-Path $repo '.git'))) {
@@ -347,7 +352,7 @@ Start-Sleep -Seconds $delay
 # ── Launch Chrome kiosk ───────────────────────────────────────
 if ($chrome -and -not $NoChrome) {
     Ensure-Dir $script:ChromeProfile
-    $args = @(
+    $chromeArgs = @(
         '--kiosk'
         '--no-first-run'
         '--no-default-browser-check'
@@ -360,7 +365,7 @@ if ($chrome -and -not $NoChrome) {
     )
     L "Launching Chrome kiosk → $($cfg.Kiosk.ChromeUrl)"
     try {
-        Start-Process -FilePath $chrome -ArgumentList $args -WindowStyle Maximized
+        Start-Process -FilePath $chrome -ArgumentList $chromeArgs -WindowStyle Maximized
     } catch { L "Chrome launch failed: $_" 'WARN' }
 } elseif (-not $chrome) {
     L "Chrome not found - kiosk skipped" 'WARN'
