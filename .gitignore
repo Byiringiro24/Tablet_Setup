@@ -19,7 +19,14 @@ backend/data/wireguard-private.key
 backend/data/wireguard-public.key
 backend/data/attendance-settings.json
 backend/data/poll-state.json
-backend/cache/
+# Keep the cache directory structure (via .gitkeep) but ignore the actual photos
+backend/cache/photos/**/*.jpg
+backend/cache/photos/**/*.jpeg
+backend/cache/photos/**/*.png
+backend/cache/photos/**/*.webp
+backend/cache/photos/**/*.meta.json
+# Ignore the manifest but keep the directory skeleton
+!backend/cache/photos/all-rooms/.gitkeep
 backend/.env
 
 # ── Logs ──────────────────────────────────────────────────────────────────────
