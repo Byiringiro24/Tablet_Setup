@@ -1,30 +1,89 @@
-# Build artifacts
+# ── Build artifacts ───────────────────────────────────────────────────────────
 FKBridge/bin/
 FKBridge/obj/
 
-# Node
+# ── Node.js ───────────────────────────────────────────────────────────────────
 backend/node_modules/
 frontend/node_modules/
 frontend/.next/
 frontend/.turbo/
+node_modules/
+*.lock
+package-lock.json
 
-# Local data (tablet-specific, never commit)
+# ── Local tablet data (unique per tablet — never commit) ──────────────────────
 backend/data/device-config.json
 backend/data/wireguard-private.key
 backend/data/wireguard-public.key
 backend/data/attendance-settings.json
-backend/known-good-commit.txt
+backend/data/poll-state.json
+backend/cache/
 
-# Logs
-backend/logs/
+# ── Logs ──────────────────────────────────────────────────────────────────────
+logs/
 *.log
 
-# Environment
+# ── Environment ───────────────────────────────────────────────────────────────
 .env
 .env.local
 .env.production
+.env.*.local
 
-# OS
+# ── OS ────────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.suo
+*.user
+
+# ── Temp ──────────────────────────────────────────────────────────────────────
+.tmp/
+*.tmp
+*.bak
+*.bundle
+
+# ── Junk / old files — never re-add these ─────────────────────────────────────
+*.docx
+*.docm
+jj.md
+pst\ gress.md
+testing_Comit
+"new changes to make according to the latest doc"
+updating\ Tablets.txt
+branch_structure.json
+deploy-to-server.sh
+pull-safe.bat
+run-as-admin.bat
+set-admin-permanent.ps1
+setup-new-tablet.ps1
+install-services.ps1
+uninstall-services.ps1
+"INSTALL (double-click me).bat"
+SETUP-NEW-TABLET.bat
+INSTALL-ROOT.md
+PRODUCTION-READINESS-VALIDATION.md
+QUICK-REFERENCE-GUIDE.md
+test_logins.ps1
+readme.md
+wireguard-setup.md
+Wireguard.md
+"Wireguard setup.md"
+"Wireguard Tunnel document setup setup.txt"
+"WireGuard*"
+"Wireguard*"
+database/
+"Tablet Setup Scripts/README.md"
+"Tablet Setup Scripts/Readme.docx"
+"Tablet Setup Scripts/Validate-TabletSetup.ps1"
+"Tablet Setup Scripts/install-deps.ps1"
+"Tablet Setup Scripts/start-*.ps1"
+scripts/deploy-repos.ps1
+scripts/ensure-install-root.ps1
+scripts/git-templates/
+scripts/install-git-hooks.ps1
+scripts/setup-machine.ps1
+scripts/update-repos.ps1
