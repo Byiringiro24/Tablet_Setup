@@ -132,7 +132,7 @@ export default function SmartAttendanceDashboard() {
   const [devPassword,     setDevPassword]     = useState("");
   const [devPasswordError,setDevPasswordError]= useState("");
   const [showDevPassword, setShowDevPassword] = useState(false);
-  const [devForm,         setDevForm]         = useState({ ...deviceForm });
+  const [devForm,         setDevForm]         = useState({ ...deviceForm, serverApiUrl: "https://backend.ecareafrica.net/api/v1" });
 
   /* WireGuard wizard helpers */
   const [wgStatus,     setWgStatus]     = useState<WgStatus | null>(null);
@@ -522,13 +522,14 @@ export default function SmartAttendanceDashboard() {
         const saved = data?.savedConfig;
         const serverLocation = data?.tabletLocation || saved?.location || "";
         setDevForm({
-          deviceId:  saved?.deviceId  || deviceForm.deviceId,
-          ipAddress: saved?.ipAddress || deviceForm.ipAddress,
-          port:      saved?.port      || deviceForm.port,
-          license:   saved?.license   || deviceForm.license,
-          location:  serverLocation,
+          deviceId:     saved?.deviceId  || deviceForm.deviceId,
+          ipAddress:    saved?.ipAddress || deviceForm.ipAddress,
+          port:         saved?.port      || deviceForm.port,
+          license:      saved?.license   || deviceForm.license,
+          location:     serverLocation,
+          serverApiUrl: data?.serverApiUrl || "https://backend.ecareafrica.net/api/v1",
         });
-      }).catch(() => setDevForm({ ...deviceForm, location: tabletLocation || "" }));
+      }).catch(() => setDevForm({ ...deviceForm, location: tabletLocation || "", serverApiUrl: "https://backend.ecareafrica.net/api/v1" }));
     setDevStep("password");
   };
 
@@ -552,11 +553,17 @@ export default function SmartAttendanceDashboard() {
     const cfg = { ...devForm, location: tabletLocation || devForm.location || "" };
     setDeviceForm(cfg); deviceFormRef.current = cfg;
     closeDevModal();
-    // Show success immediately - dont block UI waiting for device TCP handshake
     toast.success("Settings saved - connecting...", { id: "ac" });
     if (autoConnectRef.current) clearTimeout(autoConnectRef.current);
     setConnectAttempt(0);
-    // Persist developer-supplied config immediately so it's kept until explicitly changed
+    // Save server API URL if changed
+    if (cfg.serverApiUrl && cfg.serverApiUrl.startsWith("http")) {
+      fetch(`${API_BASE}/api/config/server-url`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: cfg.serverApiUrl }),
+      }).catch(() => null);
+    }
     deviceApi.saveConfig({ ...cfg }).catch(() => null);
 
     deviceApi.connect({ ...cfg, timeoutMs: 6000, saveConfig: true })
@@ -1120,6 +1127,19 @@ export default function SmartAttendanceDashboard() {
                 <div>
                   <label className="mb-1.5 block text-sm text-slate-400">Device ID</label>
                   <input type="text" value={devForm.deviceId} onChange={e => setDevForm({...devForm, deviceId: e.target.value})} className="form-field" />
+                </div>
+                <div className="sm:col-span-2 border-t border-slate-800 pt-4">
+                  <label className="mb-1.5 block text-sm font-medium text-amber-400">School Server URL</label>
+                  <input
+                    type="text"
+                    value={devForm.serverApiUrl ?? "https://backend.ecareafrica.net/api/v1"}
+                    onChange={e => setDevForm({...devForm, serverApiUrl: e.target.value})}
+                    placeholder="https://backend.ecareafrica.net/api/v1"
+                    className="form-field font-mono text-xs"
+                  />
+                  <p className="mt-1 text-xs text-slate-500">
+                    Change this if the school server moves to a new address. Takes effect immediately — no restart needed.
+                  </p>
                 </div>
               </div>
               {/* Location is read-only — fetched automatically from the school server registry */}
