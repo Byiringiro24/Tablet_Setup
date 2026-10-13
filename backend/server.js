@@ -148,11 +148,26 @@ let bridgeProcess = null;
 let bridgeReady = false;
 let pending = [];
 let currentDevice = null;
+let fk623StatusInProgress = false; // prevent concurrent STATUS commands from /api/health
 let usersCache = [];
 let logsCache = [];
 let students = loadStudents();
 let attendanceSettings = loadAttendanceSettings();
 const PHOTO_CACHE_ROOT = path.join(__dirname, 'cache', 'photos');
+
+// ── Ensure the photo cache directory exists on startup ────────────────────────
+// Without this, the very first scan on a fresh install fails with ENOENT because
+// the directory doesn't exist yet (it's gitignored and not created by git clone).
+// We create it eagerly so photo lookups never fail with a missing-directory error.
+const PHOTO_CACHE_DEFAULT_DIR = path.join(PHOTO_CACHE_ROOT, 'all-rooms');
+try {
+  if (!fs.existsSync(PHOTO_CACHE_DEFAULT_DIR)) {
+    fs.mkdirSync(PHOTO_CACHE_DEFAULT_DIR, { recursive: true });
+    console.log('[PhotoCache] Created cache directory:', PHOTO_CACHE_DEFAULT_DIR);
+  }
+} catch (err) {
+  console.warn('[PhotoCache] Could not create cache directory:', err.message);
+}
 
 function getRoomPhotoRoot(roomKey = 'all-rooms') {
   const safeRoom = String(roomKey || 'all-rooms').trim().replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, '-');
@@ -1021,23 +1036,65 @@ if (TABLET_UUID) {
 
 app.get('/api/health', async (req, res) => {
   const savedConfig = loadDeviceConfig();
+
+  // Fetch real-time FK623 status via STATUS command (non-blocking, 3s timeout)
+  // This ensures /api/health always returns actual device connectivity,
+  // not stale in-memory state from the last auto-connect cycle.
+  let fk623Status = {
+    connected: !!(currentDevice && currentDevice.connected),
+    deviceId:  currentDevice?.deviceId  || null,
+    ipAddress: activeDeviceConfig?.ipAddress || savedConfig?.ipAddress || null,
+    port:      activeDeviceConfig?.port      || savedConfig?.port      || 5005,
+    users:     currentDevice?.deviceUserCount || 0,
+    logs:      currentDevice?.logCount        || 0,
+  };
+
+  // If bridge is ready, do a live STATUS check to get truly current state
+  if (bridgeReady && !fk623StatusInProgress) {
+    fk623StatusInProgress = true;
+    try {
+      const result = await Promise.race([
+        sendCommand('STATUS', 3000),
+        new Promise(resolve => setTimeout(() => resolve({ success: false }), 3500))
+      ]);
+      if (result.success && result.data) {
+        currentDevice = result.data;
+        fk623Status = {
+          connected:  Boolean(result.data.connected),
+          deviceId:   result.data.deviceId   || fk623Status.deviceId,
+          ipAddress:  result.data.ipAddress  || fk623Status.ipAddress,
+          port:       result.data.port       || fk623Status.port,
+          users:      result.data.deviceUserCount || result.data.users || 0,
+          logs:       result.data.logCount        || result.data.logs  || 0,
+        };
+      } else if (!result.success) {
+        // STATUS failed — FK623 disconnected
+        currentDevice = null;
+        fk623Status.connected = false;
+      }
+    } catch { /* non-fatal */ }
+    finally { fk623StatusInProgress = false; }
+  }
+
   res.json({
-    status: 'ok',
+    status:       'ok',
     bridgeRunning: bridgeProcess !== null,
     bridgeReady,
-    bootId: BOOT_ID,
+    bootId:       BOOT_ID,
+    cursor:       pollState.lastSeenLogId,
+    fk623:        fk623Status,
+    // Keep 'device' field for backwards compatibility with existing callers
     device: currentDevice,
-    cursor: pollState.lastSeenLogId,
-    autoConnect: { enabled: autoConnectEnabled, attempt: autoConnectAttempt },
+    autoConnect:  { enabled: autoConnectEnabled, attempt: autoConnectAttempt },
     savedConfig,
-    tabletUuid: TABLET_UUID || null,
-    tabletName: tabletInfo.name,
-    devPassword: DEV_PASSWORD,
+    tabletUuid:   TABLET_UUID || null,
+    tabletName:   tabletInfo.name,
+    devPassword:  DEV_PASSWORD,
     tabletLocation: tabletInfo.location,
     vpn: {
       serverEndpoint: WG_SERVER_ENDPOINT,
-      allowedIPs: VPN_ALLOWED_IPS,
-      dns: WG_DNS,
+      allowedIPs:     VPN_ALLOWED_IPS,
+      dns:            WG_DNS,
     },
   });
 });
@@ -2193,11 +2250,65 @@ app.post('/api/school/photos/sync-room', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/school/photos/sync-all
+ * Downloads photos for ALL students in students.json that are missing from cache.
+ * Called automatically after student sync and on tablet startup.
+ * Returns counts: { synced, missing, total }
+ */
+app.post('/api/school/photos/sync-all', async (req, res) => {
+  try {
+    const token = req.body?.token || schoolAuthToken;
+    // Only sync students who have a photoUrl and are missing from cache
+    const studentsWithPhotos = students.filter(s => s.photoUrl && !s.photoUrl.startsWith('http://localhost'));
+    if (!studentsWithPhotos.length) {
+      return res.json({ success: true, synced: 0, missing: 0, total: 0, message: 'No photos to sync' });
+    }
+    const result = await syncRoomPhotoCache({
+      roomKey:      'all-rooms',
+      deviceId:     currentDevice?.deviceId || 'tablet',
+      studentsList: studentsWithPhotos.map(s => ({
+        id:        s.studentId || s.studentDeviceId,
+        student_id: s.studentId || s.studentDeviceId,
+        photo_url: s.photoUrl,
+        photoUrl:  s.photoUrl,
+      })),
+      token,
+    });
+    res.json({ success: true, ...result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error?.message || 'Photo sync-all failed' });
+  }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`FK Attendance Backend running on http://localhost:${PORT}`);
   startBridge();
   // Kick off auto-connect shortly after bridge starts
   scheduleAutoConnect(3000);
+
+  // Sync missing photos 30 seconds after startup (give token time to load)
+  // Runs silently — downloads any photos in students.json that are missing from cache
+  setTimeout(() => {
+    const studentsWithPhotos = students.filter(s => s.photoUrl && !s.photoUrl.startsWith('http://localhost'));
+    if (studentsWithPhotos.length && schoolAuthToken) {
+      console.log(`[PhotoCache] Startup sync: checking ${studentsWithPhotos.length} student photo(s)...`);
+      syncRoomPhotoCache({
+        roomKey:      'all-rooms',
+        deviceId:     'tablet',
+        studentsList: studentsWithPhotos.map(s => ({
+          id:        s.studentId || s.studentDeviceId,
+          student_id: s.studentId || s.studentDeviceId,
+          photo_url: s.photoUrl,
+          photoUrl:  s.photoUrl,
+        })),
+        token: schoolAuthToken,
+      }).then(r => {
+        if (r.syncedCount > 0) console.log(`[PhotoCache] Startup sync: downloaded ${r.syncedCount} photo(s)`);
+        if (r.missingCount > 0) console.log(`[PhotoCache] Startup sync: ${r.missingCount} photo(s) unavailable (server unreachable?)`);
+      }).catch(() => null);
+    }
+  }, 30_000);
 });
 
 process.on('SIGINT', () => {
