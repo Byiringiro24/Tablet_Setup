@@ -249,6 +249,8 @@ if (-not (Test-Path $script:DeviceCfg)) {
         license      = [int]$cfg.Device.License
         ipAddress    = $bioIp
         port         = $bioPort
+        netPassword  = 0
+        protocolType = -1
         timeoutMs    = [int]$cfg.Device.TimeoutMs
         localIp      = (Get-LocalIP)
         generatedAt  = (Get-Date).ToString('o')
