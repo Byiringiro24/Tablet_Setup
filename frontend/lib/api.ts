@@ -22,6 +22,8 @@ export const deviceApi = {
   clearLogs: () => api.post('/device/clear-logs'),
   powerOff: () => api.post('/device/poweroff'),
   clearAll: () => api.post('/device/clear-all'),
+  /** Save device config to backend without connecting (used by Developer modal) */
+  saveConfig: (data: { deviceId?: string; ipAddress: string; port: number; license?: number; [key: string]: any }) => api.post('/device/connect', { ...data, saveConfig: true }),
 };
 
 export const studentApi = {
@@ -45,6 +47,11 @@ export const dashboardApi = {
 export const devicesApi = {
   getAll: () => api.get('/devices'),
   create: (data: any) => api.post('/devices', data),
+};
+
+export const configApi = {
+  /** Update SERVER_API_URL at runtime — takes effect immediately, saved to .env */
+  updateServerUrl: (url: string) => api.post('/config/server-url', { url }),
 };
 
 export const wireguardApi = {
