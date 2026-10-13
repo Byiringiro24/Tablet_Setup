@@ -37,6 +37,8 @@ export const attendanceApi = {
   getToday: () => api.get('/attendance/today'),
   getSettings: () => api.get('/attendance/settings'),
   updateSettings: (settings: any) => api.put('/attendance/settings', settings),
+  /** Push FK623 biometric logs to the school server. Requires school login. */
+  pushToServer: (since?: string) => api.post('/attendance/push-to-server', since ? { since } : {}),
 };
 
 export const dashboardApi = {
