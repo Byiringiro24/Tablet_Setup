@@ -420,6 +420,8 @@ export default function SmartAttendanceDashboard() {
         const fresh = (logsRes.data as AttendanceLog[]).filter(l => !knownLogIds.current.has(l.id));
         if (fresh.length) { fresh.forEach(l => knownLogIds.current.add(l.id)); setLogs(prev => [...fresh, ...prev].slice(0, 200)); }
       }
+      // Always keep students list fresh so Push Students shows latest
+      studentApi.getAll().then(r => { if (r.data) setStudents(r.data as Student[] || []); }).catch(() => null);
     } catch {}
   }
 
@@ -963,7 +965,7 @@ export default function SmartAttendanceDashboard() {
               <div className="grid shrink-0 grid-cols-2 gap-3 lg:grid-cols-4">
                 <SummaryTile label="Total Students"   value={stats.totalStudents}   color="cyan" />
                 <SummaryTile label="Attendance Today" value={stats.attendanceToday} color="emerald" />
-                <SummaryTile label="Devices"          value={`${stats.onlineDevices}/${stats.totalDevices}`} color="indigo" />
+                <SummaryTile label="Devices"          value={`${stats.onlineDevices}/${stats.totalDevices}`} color={stats.onlineDevices > 0 ? "green" : "red"} />
                 <SummaryTile label="Total Logs"       value={stats.totalLogs}       color="slate" />
               </div>
 
@@ -994,10 +996,37 @@ export default function SmartAttendanceDashboard() {
                       <FiUploadCloud /> Push All
                     </button>
                   </div>
-                  <p className="text-xs text-slate-500 leading-relaxed">
+                  <p className="text-xs text-slate-500 leading-relaxed mb-3">
                     Enroll students on the FK623 biometric device so they can scan for attendance.
                     Students must be pushed before they can mark attendance.
                   </p>
+                  {/* Students that will be pushed — loaded from local students.json */}
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                      Students to push ({students.length})
+                    </span>
+                    <button onClick={loadStudents} disabled={busy}
+                      className="rounded-lg border border-slate-700 p-1.5 text-slate-400 hover:text-white disabled:opacity-40 transition">
+                      <FiRefreshCw className={`text-xs ${busy ? "animate-spin" : ""}`} />
+                    </button>
+                  </div>
+                  {students.length === 0 ? (
+                    <p className="text-xs text-slate-600 py-3 text-center">
+                      No students registered yet. Add students in the Students panel first.
+                    </p>
+                  ) : (
+                    <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+                      {students.slice(0, 50).map(s => (
+                        <div key={s.studentId} className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-800/40 px-3 py-1.5 text-xs">
+                          <span className="font-medium text-slate-200 truncate mr-2">{s.name}</span>
+                          <span className="text-slate-500 shrink-0">{s.studentDeviceId}</span>
+                        </div>
+                      ))}
+                      {students.length > 50 && (
+                        <p className="text-center text-xs text-slate-600 pt-1">+{students.length - 50} more</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

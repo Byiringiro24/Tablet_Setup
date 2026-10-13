@@ -5,19 +5,6 @@
 **Install path**: `C:\EcaAfrica`  
 **Time needed**: 20–30 minutes
 
----
-
-## Overview — What This Document Covers
-
-1. Install all required software (Node.js, .NET 8, Git, WireGuard, Chrome)
-2. Clone the code from GitHub
-3. Write all configuration files
-4. Build the frontend and FKBridge
-5. Start and test manually
-6. Install as auto-start Windows services (NSSM)
-7. Set up WireGuard VPN tunnel
-8. Configure Chrome to open automatically on every login (kiosk mode)
-
 > Run all commands in **PowerShell as Administrator**.  
 > Open Start Menu → search "PowerShell" → right-click → "Run as Administrator"
 
@@ -27,66 +14,46 @@
 
 ### 1.1 Node.js
 
-Download and install Node.js LTS (v20):
-
-```
-https://nodejs.org/dist/v20.19.0/node-v20.19.0-x64.msi
-```
+Download from: `https://nodejs.org/dist/v20.19.0/node-v20.19.0-x64.msi`
 
 Run the installer. Accept all defaults. Ensure "Add to PATH" is checked.
 
 Verify:
-
 ```powershell
 node --version
 npm --version
 ```
-
 Expected: `v20.x.x` and `10.x.x` or higher.
 
 ---
 
 ### 1.2 .NET 8 Desktop Runtime x86
 
-The FK623 biometric device DLL is 32-bit. You need the **x86** runtime — the 64-bit version will not work.
+> The FK623 biometric device DLL is 32-bit. You MUST install the **x86** version.
 
-Download:
+Download Runtime x86: `https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x86.exe`
 
-```
-https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x86.exe
-```
+Download SDK x86 (needed to compile FKBridge):  
+`https://aka.ms/dotnet/8.0/dotnet-sdk-win-x86.exe`
 
-Run the installer silently or with defaults.
-
-Also download the .NET 8 SDK x86 (needed to compile FKBridge):
-
-```
-https://aka.ms/dotnet/8.0/dotnet-sdk-win-x86.exe
-```
+Run both installers with defaults.
 
 Verify:
-
 ```powershell
 & "C:\Program Files (x86)\dotnet\dotnet.exe" --list-runtimes
 & "C:\Program Files (x86)\dotnet\dotnet.exe" --list-sdks
 ```
-
-You should see lines containing `8.0` in both outputs.
+Both must show lines containing `8.0`.
 
 ---
 
 ### 1.3 Git
 
-Download:
+Download: `https://github.com/git-for-windows/git/releases/download/v2.47.0.windows.1/Git-2.47.0-64-bit.exe`
 
-```
-https://github.com/git-for-windows/git/releases/download/v2.47.0.windows.1/Git-2.47.0-64-bit.exe
-```
-
-Run the installer. Accept all defaults.
+Run installer, accept all defaults.
 
 Verify:
-
 ```powershell
 git --version
 ```
@@ -95,48 +62,33 @@ git --version
 
 ### 1.4 WireGuard
 
-Download:
+Download: `https://download.wireguard.com/windows-client/wireguard-installer.exe`
 
-```
-https://download.wireguard.com/windows-client/wireguard-installer.exe
-```
-
-Run the installer. Accept the UAC prompt. WireGuard installs silently.
+Run installer, accept UAC prompt.
 
 Verify:
-
 ```powershell
 Test-Path "C:\Program Files\WireGuard\wireguard.exe"
 Test-Path "C:\Program Files\WireGuard\wg.exe"
 ```
-
 Both must return `True`.
 
 ---
 
 ### 1.5 Google Chrome
 
-Download:
+Download: `https://dl.google.com/chrome/install/ChromeSetup.exe`
 
-```
-https://dl.google.com/chrome/install/ChromeSetup.exe
-```
-
-Run the installer.
+Run installer.
 
 Verify:
-
 ```powershell
 Test-Path "C:\Program Files\Google\Chrome\Application\chrome.exe"
 ```
 
-Must return `True`.
-
 ---
 
-### 1.6 Refresh PATH after installs
-
-After all installs, reload PATH so new tools are available in the current session:
+### 1.6 Reload PATH after installs
 
 ```powershell
 $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH","User")
@@ -152,8 +104,7 @@ $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH","Machine") + ";"
 git clone --branch Testing-Branch https://github.com/Byiringiro24/Tablet_Setup.git C:\EcaAfrica
 ```
 
-If `C:\EcaAfrica` already exists and has old files, remove it first:
-
+If `C:\EcaAfrica` already exists, remove it first:
 ```powershell
 Remove-Item C:\EcaAfrica -Recurse -Force
 git clone --branch Testing-Branch https://github.com/Byiringiro24/Tablet_Setup.git C:\EcaAfrica
@@ -173,9 +124,7 @@ New-Item -ItemType Directory -Force -Path C:\EcaAfrica\backend\cache\photos\all-
 
 ## Part 3 — Write Configuration Files
 
-### 3.1 Backend environment file
-
-Create `C:\EcaAfrica\backend\.env`:
+### 3.1 Backend environment file (`backend\.env`)
 
 ```powershell
 @"
@@ -189,13 +138,11 @@ WG_DNS=1.1.1.1
 "@ | Set-Content C:\EcaAfrica\backend\.env -Encoding UTF8
 ```
 
-> Fill in `TABLET_UUID=` after registering the tablet in the Super Admin portal.
+> Fill `TABLET_UUID=` after registering in the Super Admin portal.
 
 ---
 
-### 3.2 Device config
-
-Create `C:\EcaAfrica\backend\data\device-config.json`:
+### 3.2 Device config (`backend\data\device-config.json`)
 
 ```powershell
 @"
@@ -211,12 +158,11 @@ Create `C:\EcaAfrica\backend\data\device-config.json`:
 "@ | Set-Content C:\EcaAfrica\backend\data\device-config.json -Encoding UTF8
 ```
 
-> Replace `192.168.1.76` with the actual IP of the FK623 device on this school's network.  
-> Replace `DV-KGL-01` with a label for this gate (e.g. `DV-KGL-02`, `DV-MUS-01`).
+> Replace `192.168.1.76` with the FK623 device's actual IP on this school's network.
 
 ---
 
-### 3.3 Frontend environment file
+### 3.3 Frontend environment file (`frontend\.env.local`)
 
 ```powershell
 "NEXT_PUBLIC_API_URL=http://localhost:5000" | Set-Content C:\EcaAfrica\frontend\.env.local -Encoding UTF8
@@ -224,7 +170,7 @@ Create `C:\EcaAfrica\backend\data\device-config.json`:
 
 ---
 
-### 3.4 Create empty students file if missing
+### 3.4 Create empty students file
 
 ```powershell
 if (-not (Test-Path C:\EcaAfrica\backend\data\students.json)) {
@@ -234,9 +180,9 @@ if (-not (Test-Path C:\EcaAfrica\backend\data\students.json)) {
 
 ---
 
-## Part 4 — Install Dependencies and Build
+## Part 4 — Build
 
-### 4.1 Backend npm install
+### 4.1 Backend dependencies
 
 ```powershell
 cd C:\EcaAfrica\backend
@@ -245,7 +191,7 @@ npm install
 
 ---
 
-### 4.2 Build FKBridge (.NET)
+### 4.2 Build FKBridge (.NET x86)
 
 ```powershell
 $dotnet = "C:\Program Files (x86)\dotnet\dotnet.exe"
@@ -254,17 +200,15 @@ cd C:\EcaAfrica\FKBridge
 & $dotnet build FKBridge.csproj -c Release --no-restore
 ```
 
-Confirm the output file exists:
-
+Confirm:
 ```powershell
 Test-Path C:\EcaAfrica\FKBridge\bin\Release\net8.0\FKBridge.exe
 ```
-
 Must return `True`.
 
 ---
 
-### 4.3 Frontend npm install and build
+### 4.3 Frontend build
 
 ```powershell
 cd C:\EcaAfrica\frontend
@@ -272,53 +216,38 @@ npm install
 npm run build
 ```
 
-The build takes 2–3 minutes. You should see `✓ Compiled successfully` at the end.
-
-Confirm the build output exists:
-
+Build takes 2–3 minutes. Confirm:
 ```powershell
 Test-Path C:\EcaAfrica\frontend\.next
 ```
-
-Must return `True`.
 
 ---
 
 ## Part 5 — Manual Test Run
 
-Before installing as services, verify everything works manually.
-
-### 5.1 Start the backend
-
-Open a new PowerShell window as Administrator:
+### 5.1 Start backend (PowerShell window 1 — as Administrator)
 
 ```powershell
 cd C:\EcaAfrica\backend
 node server.js
 ```
 
-You should see:
-
+Expected output:
 ```
 FK Attendance Backend running on http://localhost:5000
-Starting FK bridge: ...FKBridge.exe
 FK bridge ready
-Auto-connect attempt #1: 192.168.1.76:5005
 Auto-connect: connected successfully to 192.168.1.76
 [Time Sync] Device clock synced to tablet time: ...
 ```
 
-### 5.2 Start the frontend
-
-Open another PowerShell window as Administrator:
+### 5.2 Start frontend (PowerShell window 2)
 
 ```powershell
 cd C:\EcaAfrica\frontend
 npm run start
 ```
 
-You should see:
-
+Expected output:
 ```
 ▲ Next.js
 - Local: http://localhost:3000
@@ -328,173 +257,263 @@ You should see:
 ### 5.3 Health check
 
 ```powershell
-Invoke-RestMethod http://localhost:5000/api/health | ConvertTo-Json
+Invoke-RestMethod http://localhost:5000/api/health | Select-Object status, bridgeReady
 ```
 
-Expected: `"status": "ok"`, `"bridgeReady": true`
+Expected: `status: ok`, `bridgeReady: True`
 
-### 5.4 Open the dashboard
+### 5.4 Open dashboard
 
-Open Chrome and go to: **http://localhost:3000**
+Open Chrome → **http://localhost:3000**
 
-Confirm the dashboard loads and the device shows as Online.
+Confirm device shows as **Online** (green badge) and attendance logs load.
 
-If everything works, press `Ctrl+C` in both PowerShell windows to stop the servers, then continue to Part 6.
+If everything works, press `Ctrl+C` in both windows, then continue to Part 6.
 
 ---
 
-## Part 6 — Install as Auto-Start Windows Services
+## Part 6 — Auto-Start Using Windows Task Scheduler
 
-Services run automatically on every boot as **SYSTEM** (full Administrator) — no manual start ever needed.
+Windows Task Scheduler runs both services automatically at every logon as **highest privileges** — no manual start needed after reboot.
 
-### 6.1 Download NSSM
+> No third-party tools (NSSM, etc.) are required. Task Scheduler is built into every Windows installation.
 
-NSSM wraps any executable as a Windows service.
+---
 
-```powershell
-# Download
-Invoke-WebRequest -Uri "https://nssm.cc/release/nssm-2.24.zip" -OutFile "$env:TEMP\nssm.zip" -UseBasicParsing
-
-# Extract
-Expand-Archive -Path "$env:TEMP\nssm.zip" -DestinationPath $env:TEMP -Force
-
-# Copy the 64-bit version to tools folder
-Copy-Item "$env:TEMP\nssm-2.24\win64\nssm.exe" C:\EcaAfrica\tools\nssm.exe -Force
-```
-
-Verify:
+### 6.1 Create the backend startup script
 
 ```powershell
-C:\EcaAfrica\tools\nssm.exe version
+@'
+# EcaAfrica Backend Startup Script
+$LOG = "C:\EcaAfrica\logs\backend.log"
+$ERR = "C:\EcaAfrica\logs\backend-err.log"
+if (-not (Test-Path C:\EcaAfrica\logs)) { New-Item -ItemType Directory -Path C:\EcaAfrica\logs -Force | Out-Null }
+
+$nodeExe  = (Get-Command node.exe -ErrorAction SilentlyContinue)?.Source
+if (-not $nodeExe) { $nodeExe = "C:\Program Files\nodejs\node.exe" }
+$serverJs = "C:\EcaAfrica\backend\server.js"
+
+if (-not (Test-Path $serverJs)) { Add-Content $ERR "[$(Get-Date)] server.js not found at $serverJs"; exit 1 }
+
+# Load .env into environment
+$envFile = "C:\EcaAfrica\backend\.env"
+if (Test-Path $envFile) {
+    foreach ($line in Get-Content $envFile) {
+        if ($line -match '^\s*([^#=\s]+)\s*=\s*(.*)$') {
+            [System.Environment]::SetEnvironmentVariable($matches[1], $matches[2], 'Process')
+        }
+    }
+}
+
+# Kill any stale node processes from EcaAfrica
+Get-Process node -ErrorAction SilentlyContinue | Where-Object {
+    (Get-CimInstance Win32_Process -Filter "ProcessId=$($_.Id)" -EA SilentlyContinue).CommandLine -match 'EcaAfrica'
+} | Stop-Process -Force -ErrorAction SilentlyContinue
+
+Start-Sleep -Seconds 2
+
+# Start backend — redirect stdout and stderr to log files
+$psi = New-Object System.Diagnostics.ProcessStartInfo
+$psi.FileName               = $nodeExe
+$psi.Arguments              = "`"$serverJs`""
+$psi.WorkingDirectory       = "C:\EcaAfrica\backend"
+$psi.UseShellExecute        = $false
+$psi.CreateNoWindow         = $true
+$psi.RedirectStandardOutput = $true
+$psi.RedirectStandardError  = $true
+
+$proc = [System.Diagnostics.Process]::Start($psi)
+$proc.add_OutputDataReceived({ param($s,$e); if ($e.Data) { Add-Content -LiteralPath $LOG -Value $e.Data -EA SilentlyContinue } })
+$proc.add_ErrorDataReceived({  param($s,$e); if ($e.Data) { Add-Content -LiteralPath $ERR -Value $e.Data -EA SilentlyContinue } })
+$proc.BeginOutputReadLine()
+$proc.BeginErrorReadLine()
+
+Add-Content $LOG "[$(Get-Date)] Backend started. PID=$($proc.Id)"
+
+# Keep the script alive while the process runs (Task Scheduler needs this)
+$proc.WaitForExit()
+Add-Content $LOG "[$(Get-Date)] Backend process exited with code $($proc.ExitCode)"
+'@ | Set-Content C:\EcaAfrica\tools\start-backend.ps1 -Encoding UTF8
 ```
 
 ---
 
-### 6.2 Find the Node.js executable path
+### 6.2 Create the frontend startup script
 
 ```powershell
-$nodeExe = (Get-Command node.exe).Source
-Write-Output $nodeExe
-```
+@'
+# EcaAfrica Frontend Startup Script
+$LOG = "C:\EcaAfrica\logs\frontend.log"
+$ERR = "C:\EcaAfrica\logs\frontend-err.log"
+if (-not (Test-Path C:\EcaAfrica\logs)) { New-Item -ItemType Directory -Path C:\EcaAfrica\logs -Force | Out-Null }
 
-Save this path — you will use it in the next steps. It is usually:
-`C:\Program Files\nodejs\node.exe`
+# Wait for backend to be ready (up to 90s)
+$deadline = (Get-Date).AddSeconds(90)
+while ((Get-Date) -lt $deadline) {
+    try {
+        $r = Invoke-WebRequest http://localhost:5000/api/health -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
+        if ($r.StatusCode -eq 200) { break }
+    } catch { Start-Sleep -Seconds 3 }
+}
 
----
-
-### 6.3 Install EcaAfrica-Bridge service (backend)
-
-```powershell
-$nssm    = "C:\EcaAfrica\tools\nssm.exe"
-$nodeExe = (Get-Command node.exe).Source
-
-# Install service
-& $nssm install EcaAfrica-Bridge $nodeExe "server.js"
-& $nssm set EcaAfrica-Bridge AppDirectory     "C:\EcaAfrica\backend"
-& $nssm set EcaAfrica-Bridge DisplayName      "EcaAfrica Bridge (FK623 + WireGuard)"
-& $nssm set EcaAfrica-Bridge Description      "Manages FK623 biometric device, WireGuard VPN, attendance sync"
-& $nssm set EcaAfrica-Bridge Start            SERVICE_AUTO_START
-& $nssm set EcaAfrica-Bridge ObjectName       LocalSystem
-& $nssm set EcaAfrica-Bridge AppStdout        "C:\EcaAfrica\logs\bridge.log"
-& $nssm set EcaAfrica-Bridge AppStderr        "C:\EcaAfrica\logs\bridge-err.log"
-& $nssm set EcaAfrica-Bridge AppRotateFiles   1
-& $nssm set EcaAfrica-Bridge AppRotateBytes   10485760
-& $nssm set EcaAfrica-Bridge AppRestartDelay  3000
-& $nssm set EcaAfrica-Bridge DependOnService  Tcpip
-
-# Crash recovery — restart at 5s, 10s, 30s
-sc.exe failure EcaAfrica-Bridge reset= 86400 actions= restart/5000/restart/10000/restart/30000
-```
-
----
-
-### 6.4 Install EcaAfrica-Frontend service
-
-```powershell
-$nssm    = "C:\EcaAfrica\tools\nssm.exe"
-$nodeExe = (Get-Command node.exe).Source
+$nodeExe = (Get-Command node.exe -ErrorAction SilentlyContinue)?.Source
+if (-not $nodeExe) { $nodeExe = "C:\Program Files\nodejs\node.exe" }
 $nextBin = "C:\EcaAfrica\frontend\node_modules\next\dist\bin\next"
 
-# Install service
-& $nssm install EcaAfrica-Frontend $nodeExe "`"$nextBin`" start --port 3000"
-& $nssm set EcaAfrica-Frontend AppDirectory     "C:\EcaAfrica\frontend"
-& $nssm set EcaAfrica-Frontend DisplayName      "EcaAfrica Frontend (tablet dashboard)"
-& $nssm set EcaAfrica-Frontend Description      "Serves the attendance dashboard on http://localhost:3000"
-& $nssm set EcaAfrica-Frontend Start            SERVICE_AUTO_START
-& $nssm set EcaAfrica-Frontend ObjectName       LocalSystem
-& $nssm set EcaAfrica-Frontend AppStdout        "C:\EcaAfrica\logs\frontend.log"
-& $nssm set EcaAfrica-Frontend AppStderr        "C:\EcaAfrica\logs\frontend-err.log"
-& $nssm set EcaAfrica-Frontend AppRotateFiles   1
-& $nssm set EcaAfrica-Frontend AppRotateBytes   10485760
-& $nssm set EcaAfrica-Frontend AppRestartDelay  3000
-& $nssm set EcaAfrica-Frontend DependOnService  EcaAfrica-Bridge
+# Rebuild .next if missing
+if (-not (Test-Path C:\EcaAfrica\frontend\.next)) {
+    Add-Content $LOG "[$(Get-Date)] .next missing — rebuilding frontend"
+    $npmExe = (Get-Command npm -ErrorAction SilentlyContinue)?.Source ?? "C:\Program Files\nodejs\npm.cmd"
+    & $npmExe install --prefix C:\EcaAfrica\frontend 2>&1 | Out-Null
+    & $npmExe run build --prefix C:\EcaAfrica\frontend 2>&1 | Out-Null
+}
 
-sc.exe failure EcaAfrica-Frontend reset= 86400 actions= restart/5000/restart/10000/restart/30000
+$psi = New-Object System.Diagnostics.ProcessStartInfo
+$psi.FileName               = $nodeExe
+$psi.Arguments              = "`"$nextBin`" start --port 3000"
+$psi.WorkingDirectory       = "C:\EcaAfrica\frontend"
+$psi.UseShellExecute        = $false
+$psi.CreateNoWindow         = $true
+$psi.RedirectStandardOutput = $true
+$psi.RedirectStandardError  = $true
+$psi.EnvironmentVariables["PORT"] = "3000"
+$psi.EnvironmentVariables["NODE_ENV"] = "production"
+
+$proc = [System.Diagnostics.Process]::Start($psi)
+$proc.add_OutputDataReceived({ param($s,$e); if ($e.Data) { Add-Content -LiteralPath $LOG -Value $e.Data -EA SilentlyContinue } })
+$proc.add_ErrorDataReceived({  param($s,$e); if ($e.Data) { Add-Content -LiteralPath $ERR -Value $e.Data -EA SilentlyContinue } })
+$proc.BeginOutputReadLine()
+$proc.BeginErrorReadLine()
+
+Add-Content $LOG "[$(Get-Date)] Frontend started. PID=$($proc.Id)"
+$proc.WaitForExit()
+Add-Content $LOG "[$(Get-Date)] Frontend process exited with code $($proc.ExitCode)"
+'@ | Set-Content C:\EcaAfrica\tools\start-frontend.ps1 -Encoding UTF8
 ```
 
 ---
 
-### 6.5 Start the services
+### 6.3 Register backend as a scheduled task
 
 ```powershell
-Start-Service EcaAfrica-Bridge
-Start-Sleep 5
-Start-Service EcaAfrica-Frontend
+$psExe    = "powershell.exe"
+$backendScript = "C:\EcaAfrica\tools\start-backend.ps1"
+
+$action  = New-ScheduledTaskAction -Execute $psExe `
+               -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$backendScript`""
+
+$trigger = New-ScheduledTaskTrigger -AtLogOn
+
+$settings = New-ScheduledTaskSettingsSet `
+                -AllowStartIfOnBatteries `
+                -DontStopIfGoingOnBatteries `
+                -StartWhenAvailable `
+                -RestartCount 5 `
+                -RestartInterval (New-TimeSpan -Minutes 1) `
+                -MultipleInstances IgnoreNew
+
+$principal = New-ScheduledTaskPrincipal `
+                -GroupId "BUILTIN\Users" `
+                -RunLevel Highest
+
+Register-ScheduledTask "EcaAfrica-Backend" `
+    -Action $action -Trigger $trigger `
+    -Settings $settings -Principal $principal `
+    -Description "Starts EcaAfrica backend (Node.js) on logon with highest privileges" `
+    -Force
 ```
 
 ---
 
-### 6.6 Verify services are running
+### 6.4 Register frontend as a scheduled task
 
 ```powershell
-Get-Service EcaAfrica-Bridge, EcaAfrica-Frontend
+$psExe         = "powershell.exe"
+$frontendScript = "C:\EcaAfrica\tools\start-frontend.ps1"
+
+$action  = New-ScheduledTaskAction -Execute $psExe `
+               -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$frontendScript`""
+
+$trigger = New-ScheduledTaskTrigger -AtLogOn
+
+$settings = New-ScheduledTaskSettingsSet `
+                -AllowStartIfOnBatteries `
+                -DontStopIfGoingOnBatteries `
+                -StartWhenAvailable `
+                -RestartCount 5 `
+                -RestartInterval (New-TimeSpan -Minutes 1) `
+                -MultipleInstances IgnoreNew
+
+$principal = New-ScheduledTaskPrincipal `
+                -GroupId "BUILTIN\Users" `
+                -RunLevel Highest
+
+Register-ScheduledTask "EcaAfrica-Frontend" `
+    -Action $action -Trigger $trigger `
+    -Settings $settings -Principal $principal `
+    -Description "Starts EcaAfrica frontend (Next.js) on logon with highest privileges" `
+    -Force
 ```
 
-Both must show `Status: Running`.
+---
 
-Check the health endpoint:
+### 6.5 Start both tasks immediately (test without rebooting)
 
 ```powershell
-Start-Sleep 10
+Start-ScheduledTask "EcaAfrica-Backend"
+Start-Sleep -Seconds 15
+Start-ScheduledTask "EcaAfrica-Frontend"
+```
+
+---
+
+### 6.6 Verify tasks are running
+
+```powershell
+Get-ScheduledTask "EcaAfrica-Backend"  | Select-Object TaskName, State
+Get-ScheduledTask "EcaAfrica-Frontend" | Select-Object TaskName, State
+```
+
+Both must show `State: Running`.
+
+Check health:
+```powershell
+Start-Sleep -Seconds 10
 Invoke-RestMethod http://localhost:5000/api/health | Select-Object status, bridgeReady
 ```
 
 ---
 
-### 6.7 Service management commands (for future use)
+### 6.7 Task management commands (for future use)
 
 ```powershell
-# Check status
-Get-Service EcaAfrica-Bridge, EcaAfrica-Frontend
+# Start tasks manually
+Start-ScheduledTask "EcaAfrica-Backend"
+Start-ScheduledTask "EcaAfrica-Frontend"
 
-# Stop
-Stop-Service EcaAfrica-Bridge
-Stop-Service EcaAfrica-Frontend
+# Stop tasks (kills the running process)
+Stop-ScheduledTask "EcaAfrica-Backend"
+Stop-ScheduledTask "EcaAfrica-Frontend"
 
-# Start
-Start-Service EcaAfrica-Bridge
-Start-Service EcaAfrica-Frontend
+# Remove tasks completely
+Unregister-ScheduledTask "EcaAfrica-Backend"  -Confirm:$false
+Unregister-ScheduledTask "EcaAfrica-Frontend" -Confirm:$false
 
-# Restart
-Restart-Service EcaAfrica-Bridge
-Restart-Service EcaAfrica-Frontend
+# View task status
+Get-ScheduledTask "EcaAfrica-Backend", "EcaAfrica-Frontend"
 
 # View logs
-Get-Content C:\EcaAfrica\logs\bridge-err.log -Tail 50
+Get-Content C:\EcaAfrica\logs\backend.log     -Tail 50
+Get-Content C:\EcaAfrica\logs\backend-err.log -Tail 50
+Get-Content C:\EcaAfrica\logs\frontend.log    -Tail 50
 Get-Content C:\EcaAfrica\logs\frontend-err.log -Tail 50
-
-# Remove a service completely
-C:\EcaAfrica\tools\nssm.exe remove EcaAfrica-Bridge confirm
-C:\EcaAfrica\tools\nssm.exe remove EcaAfrica-Frontend confirm
 ```
 
 ---
 
 ## Part 7 — System Hardening
 
-These commands make the services fully automatic — no prompts, no manual starts after reboots.
-
-### 7.1 Suppress UAC (dedicated kiosk tablet)
+### 7.1 Suppress UAC (kiosk tablet only)
 
 ```powershell
 $uacKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
@@ -503,39 +522,25 @@ Set-ItemProperty $uacKey ConsentPromptBehaviorAdmin 0 -Type DWord
 Set-ItemProperty $uacKey PromptOnSecureDesktop      0 -Type DWord
 ```
 
-> This removes all UAC prompts. Only do this on a dedicated attendance tablet.
-
----
-
 ### 7.2 Disable Fast Startup
-
-Fast Startup can cause services to miss their auto-start on shutdown/boot.
 
 ```powershell
 Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power" HiberbootEnabled 0 -Type DWord
 ```
 
----
-
 ### 7.3 Extend service startup timeout
-
-Prevents Windows from killing slow-starting services:
 
 ```powershell
 Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control" ServicesPipeTimeout 120000 -Type DWord
 ```
 
----
-
-### 7.4 Allow PowerShell scripts to run without prompts
+### 7.4 Allow PowerShell scripts
 
 ```powershell
 Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope LocalMachine -Force
 ```
 
----
-
-### 7.5 Register WireGuard Manager for auto-start
+### 7.5 WireGuard Manager auto-start
 
 ```powershell
 Set-Service WireGuardManager -StartupType Automatic
@@ -543,80 +548,63 @@ sc.exe failure WireGuardManager reset= 86400 actions= restart/3000/restart/5000/
 Start-Service WireGuardManager -ErrorAction SilentlyContinue
 ```
 
----
-
-### 7.6 Add firewall rule for FK623 device
+### 7.6 Firewall rule for FK623 device
 
 ```powershell
 New-NetFirewallRule -DisplayName "EcaAfrica Device TCP 5005" `
     -Direction Inbound -Protocol TCP -LocalPort 5005 -Action Allow -Profile Any
 ```
 
----
-
-### 7.7 Create boot health-check scheduled task
-
-This task runs 90 seconds after every boot and login. It restarts any stopped service automatically.
+### 7.7 Boot health-check task (safety net)
 
 ```powershell
-# Write the health check script
 @'
 Start-Sleep -Seconds 90
-$services = @('EcaAfrica-Bridge','EcaAfrica-Frontend','WireGuardManager')
-foreach ($s in $services) {
-    $svc = Get-Service $s -ErrorAction SilentlyContinue
-    if ($svc -and $svc.Status -ne 'Running') { Start-Service $s -ErrorAction SilentlyContinue }
+$tasks = @('EcaAfrica-Backend','EcaAfrica-Frontend')
+foreach ($t in $tasks) {
+    $task = Get-ScheduledTask $t -ErrorAction SilentlyContinue
+    if ($task -and $task.State -ne 'Running') { Start-ScheduledTask $t -ErrorAction SilentlyContinue }
 }
 $wg = Get-Service 'WireGuardTunnel$EcareAfrica' -ErrorAction SilentlyContinue
 if ($wg -and $wg.Status -ne 'Running') { Start-Service 'WireGuardTunnel$EcareAfrica' -ErrorAction SilentlyContinue }
 '@ | Set-Content C:\EcaAfrica\tools\boot-check.ps1 -Encoding UTF8
 
-# Register the scheduled task
-$action   = New-ScheduledTaskAction -Execute "powershell.exe" `
-                -Argument "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"C:\EcaAfrica\tools\boot-check.ps1`""
-$trigger1 = New-ScheduledTaskTrigger -AtStartup
-$trigger2 = New-ScheduledTaskTrigger -AtLogOn
-$settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 5) `
-                -StartWhenAvailable -RunOnlyIfNetworkAvailable:$false -MultipleInstances IgnoreNew
+$action    = New-ScheduledTaskAction -Execute "powershell.exe" `
+                 -Argument "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"C:\EcaAfrica\tools\boot-check.ps1`""
+$trigger1  = New-ScheduledTaskTrigger -AtStartup
+$trigger2  = New-ScheduledTaskTrigger -AtLogOn
+$settings  = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 5) `
+                 -StartWhenAvailable -RunOnlyIfNetworkAvailable:$false -MultipleInstances IgnoreNew
 $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
 
 Register-ScheduledTask "EcaAfrica-Boot-Ensure" `
     -Action $action -Trigger @($trigger1, $trigger2) `
     -Settings $settings -Principal $principal `
-    -Description "Ensures EcaAfrica + WireGuard start on every boot" -Force
+    -Description "Ensures EcaAfrica tasks and WireGuard start on every boot" -Force
 ```
 
 ---
 
 ## Part 8 — WireGuard VPN Setup
 
-Do this after the services are running. Open Chrome → **http://localhost:3000** and use the WireGuard VPN wizard in the sidebar. The commands below are what happens behind the scenes and what you need to run on the server.
+### 8.1 Generate keys using the dashboard
 
-### 8.1 Generate keys (on the tablet)
+Open Chrome → **http://localhost:3000** → sidebar → **WireGuard VPN** → password `admin1234` → click **Generate Keys**.
 
-In the dashboard sidebar, click **WireGuard VPN** → enter password `admin1234` → click **Generate Keys**.
+The wizard generates real Curve25519 keys and saves them to:
+- `C:\EcaAfrica\backend\data\wireguard-private.key` — stays on tablet, never share
+- `C:\EcaAfrica\backend\data\wireguard-public.key` — copy this, send to Super Admin
 
-This runs internally:
-
-```
-wg genkey > private.key
-wg pubkey < private.key > public.key
-```
-
-Keys are saved to:
-- `C:\EcaAfrica\backend\data\wireguard-private.key` (never share)
-- `C:\EcaAfrica\backend\data\wireguard-public.key` (send to Super Admin)
+**Copy the public key** using the Copy button in the wizard.
 
 ---
 
-### 8.2 Add tablet as peer on the server (Super Admin does this)
-
-SSH into the server and run:
+### 8.2 Add tablet as peer on the server (Super Admin — SSH)
 
 ```bash
 ssh root@169.58.124.150
 
-# Replace with the tablet's actual public key and assigned VPN IP
+# Replace with tablet's actual public key and assigned VPN IP
 wg set wg0 peer <TABLET_PUBLIC_KEY> allowed-ips <TABLET_VPN_IP>/32
 
 # Example:
@@ -625,27 +613,35 @@ wg set wg0 peer x9zmQduWk7C2q47KYLwH3Xm/o+2aJZzlVKikrJt6I1M= allowed-ips 10.0.0.
 # Save so it persists after server reboot
 wg-quick save wg0
 
-# Confirm peer was added
+# Confirm peer added — share the server public key with the technician
 wg show
-```
-
-Get the server's public key to give back to the technician:
-
-```bash
 cat /etc/wireguard/server_public.key
 ```
 
 ---
 
-### 8.3 Write the WireGuard config file (on the tablet)
+### 8.3 Configure tunnel using the dashboard
 
-Replace `<PRIVATE_KEY>` with contents of `wireguard-private.key`, `<SERVER_PUBLIC_KEY>` with what the Super Admin gave you, and `<TABLET_VPN_IP>` with your assigned IP (e.g. `10.0.0.2`):
+Back in the WireGuard wizard Step 3:
+1. Paste **Server Public Key** (from `cat /etc/wireguard/server_public.key`)
+2. **Server Endpoint** is pre-filled: `169.58.124.150:51820`
+3. **Tablet VPN IP**: the IP assigned by Super Admin (e.g. `10.0.0.2`)
+4. Click **Save & Activate Tunnel**
+
+---
+
+### 8.4 Write the WireGuard config manually (alternative to wizard)
+
+If not using the wizard, write the config directly:
 
 ```powershell
+# Read the private key that was generated
+$privateKey = Get-Content C:\EcaAfrica\backend\data\wireguard-private.key
+
 @"
 [Interface]
-PrivateKey = <PRIVATE_KEY>
-Address = <TABLET_VPN_IP>/24
+PrivateKey = $privateKey
+Address = 10.0.0.2/24
 DNS = 1.1.1.1
 
 [Peer]
@@ -656,20 +652,16 @@ PersistentKeepalive = 25
 "@ | Set-Content "C:\ProgramData\WireGuard\EcareAfrica.conf" -Encoding UTF8
 ```
 
-> Alternatively, use the WireGuard wizard in the dashboard (Step 3 — Configure) which writes this file automatically.
-
----
-
-### 8.4 Install the WireGuard tunnel as a Windows service
+Install and start the tunnel:
 
 ```powershell
-# Requires Administrator — runs elevated via Start-Process
+# Requires elevation — runs via Start-Process RunAs
 Start-Process -FilePath "C:\Program Files\WireGuard\wireguard.exe" `
     -ArgumentList "/installtunnelservice","C:\ProgramData\WireGuard\EcareAfrica.conf" `
     -Verb RunAs -Wait
 ```
 
-Set tunnel to auto-start on boot:
+Set tunnel auto-start on boot:
 
 ```powershell
 sc.exe config "WireGuardTunnel`$EcareAfrica" start= auto
@@ -678,14 +670,11 @@ sc.exe failure "WireGuardTunnel`$EcareAfrica" reset= 86400 actions= restart/5000
 
 ---
 
-### 8.5 Verify the tunnel is active
+### 8.5 Verify tunnel
 
 ```powershell
-# Check VPN IP is assigned
+# VPN IP should appear as 10.0.0.x
 ipconfig | Select-String "10\.0\."
-
-# Check Windows service
-sc.exe query "WireGuardTunnel`$EcareAfrica" | Select-String "STATE"
 
 # Ping the server through the VPN
 ping -n 4 10.0.0.1
@@ -693,14 +682,11 @@ ping -n 4 10.0.0.1
 
 Expected: `Reply from 10.0.0.1: bytes=32 time=XXXms TTL=64`
 
-If ping fails:
-- Confirm the server added this tablet as a peer (`wg show` on server)
-- Confirm `ufw allow 51820/udp` was run on the server
-- Check the server firewall: `ufw status`
+Use **Ping Test (Step 5)** in the WireGuard wizard for a visual confirmation.
 
 ---
 
-### 8.6 Stop / remove the tunnel (if needed)
+### 8.6 Remove tunnel (if needed)
 
 ```powershell
 Start-Process -FilePath "C:\Program Files\WireGuard\wireguard.exe" `
@@ -712,39 +698,41 @@ Start-Process -FilePath "C:\Program Files\WireGuard\wireguard.exe" `
 
 ## Part 9 — Chrome Kiosk Auto-Open on Login
 
-Chrome opens the attendance dashboard automatically 30 seconds after every login.
+Chrome opens the dashboard automatically 30 seconds after every login.
 
-### 9.1 Register Chrome as a scheduled task (opens 30s after login)
+### 9.1 Register Chrome kiosk task
 
 ```powershell
 $chromePath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
-$chromeArgs = "--kiosk http://localhost:3000 --disable-infobars --no-first-run --disable-session-crashed-bubble"
+$chromeArgs = "--kiosk http://localhost:3000 --disable-infobars --no-first-run --disable-session-crashed-bubble --user-data-dir=`"C:\EcaAfrica\chrome-profile`""
 
-$action    = New-ScheduledTaskAction -Execute $chromePath -Argument $chromeArgs
-$trigger   = New-ScheduledTaskTrigger -AtLogOn
-$trigger.Delay = "PT30S"   # 30-second delay so services start first
+$action   = New-ScheduledTaskAction -Execute $chromePath -Argument $chromeArgs
+$trigger  = New-ScheduledTaskTrigger -AtLogOn
+$trigger.Delay = "PT30S"   # wait 30s for services to start first
 
-$settings  = New-ScheduledTaskSettingsSet `
+$settings = New-ScheduledTaskSettingsSet `
                 -ExecutionTimeLimit (New-TimeSpan -Hours 12) `
-                -MultipleInstances IgnoreNew
+                -MultipleInstances IgnoreNew `
+                -AllowStartIfOnBatteries `
+                -DontStopIfGoingOnBatteries
 
 $principal = New-ScheduledTaskPrincipal -GroupId "BUILTIN\Users" -RunLevel Highest
+
+New-Item -ItemType Directory -Force -Path C:\EcaAfrica\chrome-profile | Out-Null
 
 Register-ScheduledTask "EcaAfrica-OpenDashboard" `
     -Action $action -Trigger $trigger `
     -Settings $settings -Principal $principal `
-    -Description "Opens EcaAfrica dashboard in Chrome 30s after login" -Force
+    -Description "Opens EcaAfrica attendance dashboard in Chrome 30s after login" -Force
 ```
 
-Verify:
+### 9.2 Verify
 
 ```powershell
 Get-ScheduledTask "EcaAfrica-OpenDashboard" | Select-Object TaskName, State
 ```
 
----
-
-### 9.2 Remove the Chrome task (if needed)
+### 9.3 Remove Chrome task
 
 ```powershell
 Unregister-ScheduledTask "EcaAfrica-OpenDashboard" -Confirm:$false
@@ -754,113 +742,100 @@ Unregister-ScheduledTask "EcaAfrica-OpenDashboard" -Confirm:$false
 
 ## Part 10 — Set Tablet UUID After Portal Registration
 
-After the Super Admin registers this tablet in the portal:
-
 ```powershell
-# Edit .env — replace YOUR-UUID-HERE with the UUID from the portal
+# Replace YOUR-UUID-HERE with the UUID from the Super Admin portal
+$uuid    = "YOUR-UUID-HERE"
 $envFile = "C:\EcaAfrica\backend\.env"
 $content = Get-Content $envFile -Raw
-$content = $content -replace "TABLET_UUID=.*", "TABLET_UUID=YOUR-UUID-HERE"
+$content = $content -replace "TABLET_UUID=.*", "TABLET_UUID=$uuid"
 Set-Content $envFile $content -Encoding UTF8
 
-# Restart the backend service to apply the change
-Restart-Service EcaAfrica-Bridge
+# Restart the backend task to apply the change
+Stop-ScheduledTask "EcaAfrica-Backend"  -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 3
+Start-ScheduledTask "EcaAfrica-Backend"
 ```
 
 ---
 
-## Part 11 — Update Code (Future)
-
-When new code is available on GitHub:
+## Part 11 — Update Code
 
 ```powershell
-# Stop services
-Stop-Service EcaAfrica-Frontend
-Stop-Service EcaAfrica-Bridge
+# Stop tasks
+Stop-ScheduledTask "EcaAfrica-Frontend" -ErrorAction SilentlyContinue
+Stop-ScheduledTask "EcaAfrica-Backend"  -ErrorAction SilentlyContinue
 Get-Process FKBridge -ErrorAction SilentlyContinue | Stop-Process -Force
 
-# Pull latest code
+# Pull latest
 cd C:\EcaAfrica
 git pull origin Testing-Branch
 
-# Install any new backend dependencies
-cd C:\EcaAfrica\backend
-npm install
-
-# Rebuild FKBridge if changed
+# Rebuild
 $dotnet = "C:\Program Files (x86)\dotnet\dotnet.exe"
-cd C:\EcaAfrica\FKBridge
-& $dotnet build FKBridge.csproj -c Release
+cd C:\EcaAfrica\backend  ; npm install
+cd C:\EcaAfrica\FKBridge ; & $dotnet build FKBridge.csproj -c Release
+cd C:\EcaAfrica\frontend ; npm install ; npm run build
 
-# Rebuild frontend if changed
-cd C:\EcaAfrica\frontend
-npm install
-npm run build
-
-# Restart services
-Start-Service EcaAfrica-Bridge
-Start-Sleep 5
-Start-Service EcaAfrica-Frontend
+# Restart
+Start-ScheduledTask "EcaAfrica-Backend"
+Start-Sleep -Seconds 10
+Start-ScheduledTask "EcaAfrica-Frontend"
 ```
 
 ---
 
-## Part 12 — Complete Checklist
-
-Use this to verify everything is set up correctly:
+## Part 12 — Full Checklist
 
 ```
 INSTALLED SOFTWARE
-[ ] Node.js v20+          — node --version
-[ ] .NET 8 SDK x86        — C:\Program Files (x86)\dotnet\dotnet.exe --list-sdks
-[ ] Git                   — git --version
-[ ] WireGuard             — C:\Program Files\WireGuard\wg.exe --version
-[ ] Google Chrome         — C:\Program Files\Google\Chrome\Application\chrome.exe
+[ ] Node.js v20+   — node --version
+[ ] .NET 8 x86     — C:\Program Files (x86)\dotnet\dotnet.exe --list-sdks
+[ ] Git            — git --version
+[ ] WireGuard      — C:\Program Files\WireGuard\wireguard.exe exists
+[ ] Chrome         — C:\Program Files\Google\Chrome\Application\chrome.exe exists
 
-CODE
+CODE & BUILD
 [ ] C:\EcaAfrica\backend\server.js exists
 [ ] C:\EcaAfrica\FKBridge\bin\Release\net8.0\FKBridge.exe exists
 [ ] C:\EcaAfrica\frontend\.next exists
 
 CONFIG FILES
-[ ] C:\EcaAfrica\backend\.env exists (TABLET_UUID filled after portal registration)
+[ ] C:\EcaAfrica\backend\.env exists (TABLET_UUID filled)
 [ ] C:\EcaAfrica\backend\data\device-config.json exists (correct FK623 IP)
 [ ] C:\EcaAfrica\frontend\.env.local exists
 
-SERVICES
-[ ] EcaAfrica-Bridge   — Get-Service EcaAfrica-Bridge   → Running
-[ ] EcaAfrica-Frontend — Get-Service EcaAfrica-Frontend → Running
-[ ] WireGuardManager   — Get-Service WireGuardManager   → Running
-
-HEALTH CHECK
-[ ] http://localhost:5000/api/health → status: ok, bridgeReady: true
-[ ] http://localhost:3000            → dashboard loads
+SCHEDULED TASKS
+[ ] EcaAfrica-Backend       — Get-ScheduledTask EcaAfrica-Backend  → Running
+[ ] EcaAfrica-Frontend      — Get-ScheduledTask EcaAfrica-Frontend → Running
+[ ] EcaAfrica-OpenDashboard — Get-ScheduledTask EcaAfrica-OpenDashboard → Ready
+[ ] EcaAfrica-Boot-Ensure   — Get-ScheduledTask EcaAfrica-Boot-Ensure  → Ready
 
 WIREGUARD
-[ ] Tunnel installed — sc.exe query WireGuardTunnel$EcareAfrica → RUNNING
-[ ] Ping server VPN  — ping 10.0.0.1 → Reply from 10.0.0.1
-[ ] Tablet public key sent to Super Admin
-[ ] Super Admin confirmed peer added on server
+[ ] WireGuard Manager       — Get-Service WireGuardManager → Running
+[ ] Tunnel service          — sc.exe query WireGuardTunnel$EcareAfrica → RUNNING
+[ ] Ping server VPN         — ping 10.0.0.1 → Reply from 10.0.0.1
 
-KIOSK
-[ ] Chrome task registered — Get-ScheduledTask EcaAfrica-OpenDashboard → Ready
-[ ] Reboot tablet — Chrome opens dashboard automatically after 30s
+HEALTH
+[ ] http://localhost:5000/api/health → status:ok, bridgeReady:true
+[ ] http://localhost:3000            → dashboard loads, device shows Online
+[ ] Reboot tablet → Chrome opens dashboard after 30s
 ```
 
 ---
 
 ## Passwords and Keys Reference
 
-| Item | Value | Where used |
-|------|-------|-----------|
-| Developer modal password | `admin1234` | Dashboard → Developer / WireGuard VPN buttons |
-| WireGuard private key | `C:\EcaAfrica\backend\data\wireguard-private.key` | Never share |
-| WireGuard public key | `C:\EcaAfrica\backend\data\wireguard-public.key` | Send to Super Admin |
-| Tablet UUID | Set in `C:\EcaAfrica\backend\.env` | From Super Admin portal |
-| FK623 device IP | Set in `device-config.json` | Local school network |
-| Server URL | `https://backend.ecareafrica.net/api/v1` | Can change via Developer modal |
+| Item | Value | Where |
+|------|-------|-------|
+| Developer modal password | `admin1234` | Dashboard → Developer / WireGuard VPN |
+| WireGuard private key | Never share | `C:\EcaAfrica\backend\data\wireguard-private.key` |
+| WireGuard public key | Send to Super Admin | `C:\EcaAfrica\backend\data\wireguard-public.key` |
+| Tablet UUID | From Super Admin portal | `C:\EcaAfrica\backend\.env` → `TABLET_UUID=` |
+| FK623 device IP | Local school network | `C:\EcaAfrica\backend\data\device-config.json` |
+| School Server URL | Can change via Developer modal | `C:\EcaAfrica\backend\.env` → `SERVER_API_URL=` |
 
 ---
 
 *EcaAfrica Biometric Attendance System — Manual Full Setup Guide*  
+*Task Scheduler edition — no third-party tools required*  
 *September 2026*
