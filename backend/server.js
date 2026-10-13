@@ -15,7 +15,9 @@ const {
 // ΓöÇΓöÇ Environment constants ΓÇö declared here so every function below can use them ΓöÇΓöÇ
 // These were previously declared mid-file, causing Temporal Dead Zone ReferenceErrors.
 const PORT            = Number(process.env.PORT || 5000);
-const SERVER_API_URL  = process.env.SERVER_API_URL || 'https://backend.ecareafrica.net/api/v1';
+// SERVER_API_URL is `let` so it can be updated at runtime via Developer modal
+// without restarting the backend — critical when the server IP/domain changes.
+let   SERVER_API_URL  = process.env.SERVER_API_URL || 'https://backend.ecareafrica.net/api/v1';
 const TABLET_UUID     = process.env.TABLET_UUID   || null;
 let   DEV_PASSWORD    = process.env.DEV_PASSWORD  || 'admin1234';
 const VPN_ALLOWED_IPS    = process.env.VPN_ALLOWED_IPS    || '10.0.0.0/16';
@@ -457,6 +459,32 @@ function saveDeviceConfig(config) {
     fs.writeFileSync(deviceConfigFile, JSON.stringify(config, null, 2));
   } catch (err) {
     console.error('Failed to save device config:', err);
+  }
+}
+
+// Persist a single key=value change to backend/.env without touching other keys.
+// Used when admin updates SERVER_API_URL or other env values at runtime via Developer modal.
+function saveEnvKey(key, value) {
+  const envFile = path.join(__dirname, '.env');
+  try {
+    let content = '';
+    if (fs.existsSync(envFile)) {
+      content = fs.readFileSync(envFile, 'utf8');
+    }
+    const lines = content.split('\n');
+    let found = false;
+    const updated = lines.map((line) => {
+      const match = line.match(/^([^#=\s]+)\s*=(.*)$/);
+      if (match && match[1] === key) {
+        found = true;
+        return `${key}=${value}`;
+      }
+      return line;
+    });
+    if (!found) updated.push(`${key}=${value}`);
+    fs.writeFileSync(envFile, updated.join('\n'), 'utf8');
+  } catch (err) {
+    console.error(`Failed to save .env key ${key}:`, err.message);
   }
 }
 
@@ -1096,7 +1124,24 @@ app.get('/api/health', async (req, res) => {
       allowedIPs:     VPN_ALLOWED_IPS,
       dns:            WG_DNS,
     },
+    serverApiUrl: SERVER_API_URL,
   });
+});
+
+// POST /api/config/server-url
+// Updates SERVER_API_URL at runtime AND persists it to .env.
+// Called from Developer modal when admin changes the server address.
+// No restart needed — takes effect immediately.
+app.post('/api/config/server-url', (req, res) => {
+  const { url } = req.body || {};
+  if (!url || !url.startsWith('http')) {
+    return res.status(400).json({ success: false, error: 'Valid URL required (must start with http)' });
+  }
+  const clean = url.trim().replace(/\/$/, ''); // strip trailing slash
+  SERVER_API_URL = clean;
+  saveEnvKey('SERVER_API_URL', clean);
+  console.log(`[Config] SERVER_API_URL updated to: ${clean}`);
+  res.json({ success: true, serverApiUrl: SERVER_API_URL });
 });
 
 // Server-Sent Events ├óΓé¼ΓÇ¥ frontend subscribes here for real-time attendance updates
