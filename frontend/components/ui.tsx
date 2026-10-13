@@ -164,20 +164,20 @@ export function AutoConnectBadge({
   if (status === "connected") {
     return (
       <span className="flex items-center gap-1.5 rounded-full bg-emerald-500/20 border border-emerald-500/30 px-3 py-1.5 text-xs font-semibold text-emerald-300">
-        <FiWifi className="shrink-0" /> Online
+        <FiWifi className="shrink-0" /> Device Online
       </span>
     );
   }
   if (status === "connecting") {
     return (
       <span className="flex animate-pulse items-center gap-1.5 rounded-full bg-cyan-500/20 border border-cyan-500/30 px-3 py-1.5 text-xs font-semibold text-cyan-300">
-        <FiLoader className="shrink-0 animate-spin" /> Connecting...
+        <FiLoader className="shrink-0 animate-spin" /> Device Connecting...
       </span>
     );
   }
   return (
-    <span className="flex animate-pulse items-center gap-1.5 rounded-full bg-amber-500/20 border border-amber-500/30 px-3 py-1.5 text-xs font-semibold text-amber-300">
-      <FiWifiOff className="shrink-0" /> Reconnecting{attempt > 0 ? ` #${attempt + 1}` : ""}...
+    <span className="flex animate-pulse items-center gap-1.5 rounded-full bg-red-500/20 border border-red-500/30 px-3 py-1.5 text-xs font-semibold text-red-300">
+      <FiWifiOff className="shrink-0" /> Device Offline{attempt > 0 ? ` (retry #${attempt + 1})` : ""}
     </span>
   );
 }

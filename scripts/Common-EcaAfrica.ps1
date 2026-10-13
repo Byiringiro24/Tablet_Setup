@@ -26,7 +26,7 @@ $script:LogDir        = 'C:\EcaAfrica\logs'
 $script:BackupDir     = 'C:\EcaAfrica\backups'
 $script:ChromeProfile = 'C:\EcaAfrica\chrome-profile'
 $script:ProvisionDir  = 'C:\EcaAfrica\provisioning'
-$script:ConfigPath    = 'C:\EcaAfrica\config\ecaafrica.json'
+$script:ConfigPath    = 'C:\EcaAfrica\scripts\config\ecaafrica.json'
 $script:DeviceCfg     = 'C:\EcaAfrica\backend\data\device-config.json'
 $script:KnownGoodFile = 'C:\EcaAfrica\known-good-commit.txt'
 
@@ -225,7 +225,8 @@ function Find-DotNetX86 {
     foreach ($p in $paths) {
         if (Test-Path $p) {
             $sdks = & $p --list-sdks 2>$null | Out-String
-            if ($sdks -match '\b[89]\.' -or $sdks -match '\b1[0-9]\.') { return $p }
+            # Match .NET 8, 9, 10, 11 ... (any major version >= 8)
+            if ($sdks -match '\b([89]|[1-9]\d)\.\d') { return $p }
         }
     }
     return $null
@@ -356,9 +357,9 @@ function Register-EcaTask {
                     -MultipleInstances IgnoreNew `
                     -RestartCount 5 `
                     -RestartInterval $interval
+    # Run for ALL users at logon (not just the installing user) with highest privileges
     $principal = New-ScheduledTaskPrincipal `
-                    -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) `
-                    -LogonType Interactive `
+                    -GroupId 'BUILTIN\Users' `
                     -RunLevel Highest
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
     Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `

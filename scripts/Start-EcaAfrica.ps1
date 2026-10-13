@@ -9,7 +9,7 @@
 #  Flow:
 #   1. Kill any stale EcaAfrica node/FKBridge processes
 #   2. Git fetch - detect new commits
-#   3. If update available: backup → pull → npm install → build → verify
+#   3. If update available: backup ΓåÆ pull ΓåÆ npm install ΓåÆ build ΓåÆ verify
 #      On build failure: rollback to known-good commit
 #   4. Start FKBridge (hidden)
 #   5. Start backend (node server.js, hidden) - wait up to 60s
@@ -36,7 +36,7 @@ L "============================================================"
 L "EcaAfrica startup  |  $env:COMPUTERNAME  |  $env:USERNAME"
 L "============================================================"
 
-# ── Prevent duplicate startup instances ──────────────────────
+# ΓöÇΓöÇ Prevent duplicate startup instances ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 $myPid = $PID
 $dupes = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
     Where-Object {
@@ -49,7 +49,7 @@ foreach ($d in $dupes) {
     L "Stopped duplicate startup PID $($d.ProcessId)"
 }
 
-# ── Load config and find tools ────────────────────────────────
+# ΓöÇΓöÇ Load config and find tools ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 $cfg    = Get-EcaConfig
 Update-EnvPath
 $git    = Find-Git
@@ -61,11 +61,11 @@ $chrome = Find-Chrome
 L "git=$git  node=$node  npm=$npm  dotnet=$dotnet  chrome=$chrome"
 Set-GitTimeouts $git  # prevent hanging on stalled connections
 
-# ── Kill stale processes ──────────────────────────────────────
+# ΓöÇΓöÇ Kill stale processes ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 Stop-EcaProcesses $LOG
 Start-Sleep -Seconds 2
 
-# ── Git update check ──────────────────────────────────────────
+# ΓöÇΓöÇ Git update check ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 $repo       = $script:RepoDir
 $updateDone = $false
 
@@ -203,7 +203,7 @@ if ($git -and (Test-Path (Join-Path $repo '.git'))) {
         L "Git not found - update check skipped" 'WARN'
     }
 }
-# ── Ensure runtime dirs have content ─────────────────────────
+# ΓöÇΓöÇ Ensure runtime dirs have content ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 foreach ($comp in @('backend','frontend','FKBridge')) {
     $dst = Join-Path $script:EcaRoot $comp
     $src = Join-Path $script:RepoDir $comp
@@ -223,7 +223,7 @@ $fkExe = Join-Path $script:FKBridgeDir 'bin\Release\net8.0\FKBridge.exe'
 if (-not (Test-Path $fkExe)) {
     L "FKBridge.exe not found at $fkExe - backend will try to build it on first run" 'WARN'
 }
-# ── Start backend ─────────────────────────────────────────────
+# ΓöÇΓöÇ Start backend ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 $serverJs = Join-Path $script:BackendDir 'server.js'
 if ($node -and (Test-Path $serverJs)) {
     if (-not (Test-PortListening $script:BackendPort)) {
@@ -252,9 +252,13 @@ if ($node -and (Test-Path $serverJs)) {
             $psi.RedirectStandardError  = $true
             foreach ($k in $envVars.Keys) { $psi.EnvironmentVariables[$k] = $envVars[$k] }
             $beProc = [System.Diagnostics.Process]::Start($psi)
-            # Async drain stdout/stderr to avoid buffer deadlock
-            $beProc.BeginOutputReadLine() 2>$null
-            $beProc.BeginErrorReadLine()  2>$null
+            # Register handlers BEFORE Begin* to prevent 4KB pipe buffer deadlock
+            $_beLog = Join-Path $script:LogDir 'backend.log'
+            $_beErr = Join-Path $script:LogDir 'backend-err.log'
+            $beProc.add_OutputDataReceived({ param($s,$e); if ($e.Data) { try { Add-Content -LiteralPath $_beLog -Value $e.Data -EA SilentlyContinue } catch {} } })
+            $beProc.add_ErrorDataReceived({  param($s,$e); if ($e.Data) { try { Add-Content -LiteralPath $_beErr -Value $e.Data -EA SilentlyContinue } catch {} } })
+            $beProc.BeginOutputReadLine()
+            $beProc.BeginErrorReadLine()
         } catch { L "Backend start failed: $_" 'WARN' }
 
         # Wait up to 90s - backend spawns FKBridge which needs extra startup time
@@ -281,7 +285,7 @@ if ($node -and (Test-Path $serverJs)) {
     L "Node or server.js missing - backend skipped" 'WARN'
 }
 
-# ── Start frontend ────────────────────────────────────────────
+# ΓöÇΓöÇ Start frontend ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 if ($npm -and (Test-Path (Join-Path $script:FrontendDir 'package.json'))) {
     if (-not (Test-PortListening $script:FrontendPort)) {
         # Rebuild .next if missing
@@ -294,7 +298,7 @@ if ($npm -and (Test-Path (Join-Path $script:FrontendDir 'package.json'))) {
         $feErrLog = Join-Path $script:LogDir 'frontend-err.log'
         L "Starting frontend (port $($script:FrontendPort))"
         try {
-            # Use node directly with next binary — avoids npm.cmd Start-Process issues
+            # Use node directly with next binary ΓÇö avoids npm.cmd Start-Process issues
             $nextBin = Join-Path $script:FrontendDir 'node_modules\.bin\next.cmd'
             if (-not (Test-Path $nextBin)) {
                 $nextBin = Join-Path $script:FrontendDir 'node_modules\.bin\next'
@@ -317,7 +321,7 @@ if ($npm -and (Test-Path (Join-Path $script:FrontendDir 'package.json'))) {
             } else {
                 # Fallback: use npm start directly via cmd
                 $psi.FileName   = 'cmd.exe'
-                $psi.Arguments  = "/c `"$npm`" run $feCmd"
+                $psi.Arguments  = "/c `"`"$npm`"`" run $feCmd"
             }
             $psi.WorkingDirectory       = $script:FrontendDir
             $psi.UseShellExecute        = $false
@@ -326,8 +330,13 @@ if ($npm -and (Test-Path (Join-Path $script:FrontendDir 'package.json'))) {
             $psi.RedirectStandardError  = $true
             foreach ($k in $feEnvVars.Keys) { $psi.EnvironmentVariables[$k] = $feEnvVars[$k] }
             $feProc = [System.Diagnostics.Process]::Start($psi)
-            $feProc.BeginOutputReadLine() 2>$null
-            $feProc.BeginErrorReadLine()  2>$null
+            # Register handlers BEFORE Begin* to prevent 4KB pipe buffer deadlock
+            $_feLog = Join-Path $script:LogDir 'frontend.log'
+            $_feErr = Join-Path $script:LogDir 'frontend-err.log'
+            $feProc.add_OutputDataReceived({ param($s,$e); if ($e.Data) { try { Add-Content -LiteralPath $_feLog -Value $e.Data -EA SilentlyContinue } catch {} } })
+            $feProc.add_ErrorDataReceived({  param($s,$e); if ($e.Data) { try { Add-Content -LiteralPath $_feErr -Value $e.Data -EA SilentlyContinue } catch {} } })
+            $feProc.BeginOutputReadLine()
+            $feProc.BeginErrorReadLine()
         } catch { L "Frontend start failed: $_" 'WARN' }
 
         # Next.js dev first compile takes 2-3 min on slow tablets; production start ~10s
@@ -344,12 +353,12 @@ if ($npm -and (Test-Path (Join-Path $script:FrontendDir 'package.json'))) {
     L "npm or frontend package.json missing - frontend skipped" 'WARN'
 }
 
-# ── Wait before Chrome ────────────────────────────────────────
+# ΓöÇΓöÇ Wait before Chrome ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 $delay = [int]$cfg.Kiosk.StartupDelaySeconds
 L "Waiting ${delay}s before launching Chrome kiosk"
 Start-Sleep -Seconds $delay
 
-# ── Launch Chrome kiosk ───────────────────────────────────────
+# ΓöÇΓöÇ Launch Chrome kiosk ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 if ($chrome -and -not $NoChrome) {
     Ensure-Dir $script:ChromeProfile
     $chromeArgs = @(
@@ -363,7 +372,7 @@ if ($chrome -and -not $NoChrome) {
         "--user-data-dir=`"$($script:ChromeProfile)`""
         $cfg.Kiosk.ChromeUrl
     )
-    L "Launching Chrome kiosk → $($cfg.Kiosk.ChromeUrl)"
+    L "Launching Chrome kiosk ΓåÆ $($cfg.Kiosk.ChromeUrl)"
     try {
         Start-Process -FilePath $chrome -ArgumentList $chromeArgs -WindowStyle Maximized
     } catch { L "Chrome launch failed: $_" 'WARN' }
@@ -371,7 +380,7 @@ if ($chrome -and -not $NoChrome) {
     L "Chrome not found - kiosk skipped" 'WARN'
 }
 
-# ── Health summary ────────────────────────────────────────────
+# ΓöÇΓöÇ Health summary ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 Start-Sleep -Seconds 5
 $beOk = (Test-PortListening $script:BackendPort) -and (Test-HttpOk "http://localhost:$($script:BackendPort)/api/health")
 $feOk = Test-PortListening $script:FrontendPort

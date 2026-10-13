@@ -15,7 +15,9 @@ const {
 // ΓöÇΓöÇ Environment constants ΓÇö declared here so every function below can use them ΓöÇΓöÇ
 // These were previously declared mid-file, causing Temporal Dead Zone ReferenceErrors.
 const PORT            = Number(process.env.PORT || 5000);
-const SERVER_API_URL  = process.env.SERVER_API_URL || 'https://backend.ecareafrica.net/api/v1';
+// SERVER_API_URL is `let` so it can be updated at runtime via Developer modal
+// without restarting the backend — critical when the server IP/domain changes.
+let   SERVER_API_URL  = process.env.SERVER_API_URL || 'https://backend.ecareafrica.net/api/v1';
 const TABLET_UUID     = process.env.TABLET_UUID   || null;
 let   DEV_PASSWORD    = process.env.DEV_PASSWORD  || 'admin1234';
 const VPN_ALLOWED_IPS    = process.env.VPN_ALLOWED_IPS    || '10.0.0.0/16';
@@ -457,6 +459,32 @@ function saveDeviceConfig(config) {
     fs.writeFileSync(deviceConfigFile, JSON.stringify(config, null, 2));
   } catch (err) {
     console.error('Failed to save device config:', err);
+  }
+}
+
+// Persist a single key=value change to backend/.env without touching other keys.
+// Used when admin updates SERVER_API_URL or other env values at runtime via Developer modal.
+function saveEnvKey(key, value) {
+  const envFile = path.join(__dirname, '.env');
+  try {
+    let content = '';
+    if (fs.existsSync(envFile)) {
+      content = fs.readFileSync(envFile, 'utf8');
+    }
+    const lines = content.split('\n');
+    let found = false;
+    const updated = lines.map((line) => {
+      const match = line.match(/^([^#=\s]+)\s*=(.*)$/);
+      if (match && match[1] === key) {
+        found = true;
+        return `${key}=${value}`;
+      }
+      return line;
+    });
+    if (!found) updated.push(`${key}=${value}`);
+    fs.writeFileSync(envFile, updated.join('\n'), 'utf8');
+  } catch (err) {
+    console.error(`Failed to save .env key ${key}:`, err.message);
   }
 }
 
@@ -1096,7 +1124,24 @@ app.get('/api/health', async (req, res) => {
       allowedIPs:     VPN_ALLOWED_IPS,
       dns:            WG_DNS,
     },
+    serverApiUrl: SERVER_API_URL,
   });
+});
+
+// POST /api/config/server-url
+// Updates SERVER_API_URL at runtime AND persists it to .env.
+// Called from Developer modal when admin changes the server address.
+// No restart needed — takes effect immediately.
+app.post('/api/config/server-url', (req, res) => {
+  const { url } = req.body || {};
+  if (!url || !url.startsWith('http')) {
+    return res.status(400).json({ success: false, error: 'Valid URL required (must start with http)' });
+  }
+  const clean = url.trim().replace(/\/$/, ''); // strip trailing slash
+  SERVER_API_URL = clean;
+  saveEnvKey('SERVER_API_URL', clean);
+  console.log(`[Config] SERVER_API_URL updated to: ${clean}`);
+  res.json({ success: true, serverApiUrl: SERVER_API_URL });
 });
 
 // Server-Sent Events ├óΓé¼ΓÇ¥ frontend subscribes here for real-time attendance updates
@@ -1483,6 +1528,226 @@ app.get('/api/attendance/today', (req, res) => {
   const today = new Date().toDateString();
   const todayLogs = logsCache.filter((log) => new Date(log.timestamp).toDateString() === today).map(attendanceFromLog);
   res.json({ success: true, summary: { total: todayLogs.length, checkIns: todayLogs.length, uniqueStudents: new Set(todayLogs.map((log) => log.studentDeviceId)).size } });
+});
+
+// POST /api/attendance/push-to-server
+// Pushes FK623 biometric attendance logs to the school server via /gate/logs.
+// Body: { since?: ISO-date-string } — optional, default = today only.
+// Requires staff to be logged in (schoolAuthToken must exist).
+// Returns: { success, pushed, failed, skipped, errors[] }
+app.post('/api/attendance/push-to-server', async (req, res) => {
+  if (!schoolAuthToken) {
+    return res.status(401).json({
+      success: false,
+      error: 'Not logged in to school server. Open the login panel and sign in first.',
+    });
+  }
+
+  // Decide which logs to push
+  const since = req.body?.since ? new Date(req.body.since) : null;
+  const logsToSend = since
+    ? logsCache.filter((log) => new Date(log.timestamp) >= since)
+    : logsCache;
+
+  if (logsToSend.length === 0) {
+    return res.json({ success: true, pushed: 0, failed: 0, skipped: 0, total: 0, message: 'No logs to push' });
+  }
+
+  let pushed = 0;
+  let failed = 0;
+  const errors = [];
+
+  for (const raw of logsToSend) {
+    const log = attendanceFromLog(raw);
+    const payload = {
+      student_id:    log.studentDeviceId || raw.userId,
+      student_name:  log.studentName,
+      device_id:     log.deviceId || currentDevice?.deviceId || TABLET_UUID || 'tablet',
+      tablet_uuid:   TABLET_UUID || null,
+      method:        log.authenticationMethod,
+      direction:     log.direction || raw.direction || 'IN',
+      timestamp:     log.timestamp || raw.timestamp,
+      status:        log.status,
+      boot_id:       BOOT_ID,
+      log_id:        raw.id || null,
+    };
+
+    try {
+      const { status: httpStatus } = await relayToServer('POST', '/gate/logs', payload, schoolAuthToken);
+      if (httpStatus >= 200 && httpStatus < 300) {
+        pushed++;
+      } else {
+        failed++;
+        errors.push({ logId: raw.id, status: httpStatus });
+      }
+    } catch (err) {
+      failed++;
+      errors.push({ logId: raw.id, error: err.message });
+    }
+  }
+
+  console.log(`[AttendancePush] pushed=${pushed} failed=${failed} total=${logsToSend.length}`);
+  res.json({
+    success: failed === 0,
+    pushed,
+    failed,
+    skipped: logsCache.length - logsToSend.length,
+    total: logsToSend.length,
+    errors: errors.slice(0, 10), // cap at 10 so response stays small
+    message: failed === 0
+      ? `Successfully pushed ${pushed} attendance record(s) to school server`
+      : `Pushed ${pushed}, failed ${failed} — check errors array`,
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SERVER-TRIGGERED ENDPOINTS
+// The school server calls these to remotely trigger actions on the tablet.
+// Authentication: the server must pass the tablet's TABLET_UUID as a Bearer
+// token in the Authorization header — prevents unauthorized callers.
+//
+//   Authorization: Bearer <TABLET_UUID>
+//
+// All endpoints return immediately with a job-started response; the actual
+// work (FK623 commands) runs asynchronously so the server doesn't time out.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function requireTabletToken(req, res, next) {
+  if (!TABLET_UUID) return next(); // no UUID configured yet — allow during setup
+  const auth = req.headers['authorization'] || '';
+  const token = auth.replace(/^Bearer\s+/i, '').trim();
+  if (token !== TABLET_UUID) {
+    return res.status(403).json({ success: false, error: 'Invalid tablet token' });
+  }
+  next();
+}
+
+// POST /api/tablet/pull-students
+// Server → Tablet: pull the latest students list from the school server
+// and save them to local students.json. Also pushes them to the FK623 device.
+app.post('/api/tablet/pull-students', requireTabletToken, async (req, res) => {
+  res.json({ success: true, message: 'Student pull started in background' });
+
+  // Run asynchronously so HTTP response returns immediately
+  setImmediate(async () => {
+    try {
+      if (!schoolAuthToken) {
+        console.log('[tablet/pull-students] No school auth token — skipping server fetch, pushing local students to device');
+        if (students.length > 0) {
+          const result = await sendCommand('GET_USERS', 30000).catch(() => null);
+          console.log(`[tablet/pull-students] Pushed ${students.length} local students to FK623`);
+        }
+        return;
+      }
+      // Fetch students from school server
+      const { status: httpStatus, json: serverStudents } = await relayToServer('GET', '/students?limit=500', null, schoolAuthToken);
+      if (httpStatus !== 200 || !serverStudents) {
+        console.warn(`[tablet/pull-students] Server returned ${httpStatus}`);
+        return;
+      }
+      const list = Array.isArray(serverStudents) ? serverStudents : (serverStudents.data || serverStudents.students || []);
+      if (!list.length) { console.log('[tablet/pull-students] No students from server'); return; }
+
+      // Merge into local students.json (upsert by studentId)
+      let changed = 0;
+      for (const s of list) {
+        const studentDeviceId = String(s.biometric_id || s.student_device_id || s.id || '').trim();
+        if (!studentDeviceId) continue;
+        const studentId = String(s.student_id || s.studentId || `RW-${studentDeviceId}`).trim().toUpperCase();
+        const existing = students.findIndex(x => x.studentId === studentId || x.studentDeviceId === studentDeviceId);
+        const record = {
+          id: studentId, studentId,
+          name: String(s.name || s.full_name || '').trim(),
+          className: String(s.class_name || s.className || '').trim(),
+          section: String(s.section || '').trim(),
+          studentDeviceId,
+          deviceUserId: studentDeviceId,
+          photoUrl: s.photo_url || s.photoUrl || '',
+          assignedDeviceId: currentDevice?.deviceId || '',
+          updatedAt: new Date().toISOString(),
+          createdAt: existing >= 0 ? students[existing].createdAt : new Date().toISOString(),
+        };
+        if (existing >= 0) { students[existing] = { ...students[existing], ...record }; }
+        else { students.push(record); }
+        changed++;
+      }
+      if (changed > 0) saveStudents();
+      console.log(`[tablet/pull-students] Merged ${changed} students from server`);
+
+      // Push all to FK623 device
+      const pushed = []; const failed = [];
+      for (const s of students) {
+        const r = await sendCommand(`ADD_USER|${s.studentDeviceId}|${String(s.name).replace(/\|/g, ' ')}`, 15000);
+        if (r.success) pushed.push(s); else failed.push(s);
+      }
+      if (pushed.length) await refreshUsersCache().catch(() => null);
+      console.log(`[tablet/pull-students] FK623 push: ${pushed.length} ok, ${failed.length} failed`);
+
+      // Emit SSE so frontend updates without reload
+      sseEmit('studentsUpdated', { count: students.length });
+    } catch (err) {
+      console.error('[tablet/pull-students] Error:', err.message);
+    }
+  });
+});
+
+// POST /api/tablet/push-attendance
+// Server → Tablet: push all cached FK623 attendance logs to the school server.
+// Body: { since?: ISO-date-string } — optional filter.
+app.post('/api/tablet/push-attendance', requireTabletToken, async (req, res) => {
+  if (!schoolAuthToken) {
+    return res.status(401).json({
+      success: false,
+      error: 'Tablet is not logged in to the school server. Login first via /api/school/login',
+    });
+  }
+  const since = req.body?.since ? new Date(req.body.since) : null;
+  const logsToSend = since ? logsCache.filter(l => new Date(l.timestamp) >= since) : logsCache;
+
+  res.json({ success: true, message: `Attendance push started for ${logsToSend.length} log(s)`, total: logsToSend.length });
+
+  setImmediate(async () => {
+    let pushed = 0; let failed = 0;
+    for (const raw of logsToSend) {
+      const log = attendanceFromLog(raw);
+      const payload = {
+        student_id:  log.studentDeviceId || raw.userId,
+        device_id:   log.deviceId || currentDevice?.deviceId || TABLET_UUID || 'tablet',
+        tablet_uuid: TABLET_UUID || null,
+        method:      log.authenticationMethod,
+        direction:   log.direction || raw.direction || 'IN',
+        timestamp:   log.timestamp || raw.timestamp,
+        status:      log.status,
+        boot_id:     BOOT_ID,
+        log_id:      raw.id || null,
+      };
+      try {
+        const { status: s } = await relayToServer('POST', '/gate/logs', payload, schoolAuthToken);
+        if (s >= 200 && s < 300) pushed++; else failed++;
+      } catch { failed++; }
+    }
+    console.log(`[tablet/push-attendance] pushed=${pushed} failed=${failed} total=${logsToSend.length}`);
+    sseEmit('attendancePushComplete', { pushed, failed, total: logsToSend.length });
+  });
+});
+
+// GET /api/tablet/status
+// Server → Tablet: get current tablet health snapshot.
+// Used by the server to monitor all tablets in one dashboard.
+app.get('/api/tablet/status', requireTabletToken, (req, res) => {
+  res.json({
+    success:        true,
+    tabletUuid:     TABLET_UUID,
+    deviceConnected: !!(currentDevice && currentDevice.connected),
+    deviceIp:       currentDevice?.ipAddress || activeDeviceConfig?.ipAddress || null,
+    studentsCount:  students.length,
+    logsCount:      logsCache.length,
+    bridgeReady,
+    bootId:         BOOT_ID,
+    vpnIp:          null, // filled by WireGuard status separately
+    serverApiUrl:   SERVER_API_URL,
+    timestamp:      new Date().toISOString(),
+  });
 });
 
 // ├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼

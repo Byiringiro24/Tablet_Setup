@@ -132,7 +132,7 @@ export default function SmartAttendanceDashboard() {
   const [devPassword,     setDevPassword]     = useState("");
   const [devPasswordError,setDevPasswordError]= useState("");
   const [showDevPassword, setShowDevPassword] = useState(false);
-  const [devForm,         setDevForm]         = useState({ ...deviceForm });
+  const [devForm,         setDevForm]         = useState({ ...deviceForm, serverApiUrl: "https://backend.ecareafrica.net/api/v1" });
 
   /* WireGuard wizard helpers */
   const [wgStatus,     setWgStatus]     = useState<WgStatus | null>(null);
@@ -420,6 +420,8 @@ export default function SmartAttendanceDashboard() {
         const fresh = (logsRes.data as AttendanceLog[]).filter(l => !knownLogIds.current.has(l.id));
         if (fresh.length) { fresh.forEach(l => knownLogIds.current.add(l.id)); setLogs(prev => [...fresh, ...prev].slice(0, 200)); }
       }
+      // Always keep students list fresh so Push Students shows latest
+      studentApi.getAll().then(r => { if (r.data) setStudents(r.data as Student[] || []); }).catch(() => null);
     } catch {}
   }
 
@@ -522,13 +524,14 @@ export default function SmartAttendanceDashboard() {
         const saved = data?.savedConfig;
         const serverLocation = data?.tabletLocation || saved?.location || "";
         setDevForm({
-          deviceId:  saved?.deviceId  || deviceForm.deviceId,
-          ipAddress: saved?.ipAddress || deviceForm.ipAddress,
-          port:      saved?.port      || deviceForm.port,
-          license:   saved?.license   || deviceForm.license,
-          location:  serverLocation,
+          deviceId:     saved?.deviceId  || deviceForm.deviceId,
+          ipAddress:    saved?.ipAddress || deviceForm.ipAddress,
+          port:         saved?.port      || deviceForm.port,
+          license:      saved?.license   || deviceForm.license,
+          location:     serverLocation,
+          serverApiUrl: data?.serverApiUrl || "https://backend.ecareafrica.net/api/v1",
         });
-      }).catch(() => setDevForm({ ...deviceForm, location: tabletLocation || "" }));
+      }).catch(() => setDevForm({ ...deviceForm, location: tabletLocation || "", serverApiUrl: "https://backend.ecareafrica.net/api/v1" }));
     setDevStep("password");
   };
 
@@ -552,11 +555,17 @@ export default function SmartAttendanceDashboard() {
     const cfg = { ...devForm, location: tabletLocation || devForm.location || "" };
     setDeviceForm(cfg); deviceFormRef.current = cfg;
     closeDevModal();
-    // Show success immediately - dont block UI waiting for device TCP handshake
     toast.success("Settings saved - connecting...", { id: "ac" });
     if (autoConnectRef.current) clearTimeout(autoConnectRef.current);
     setConnectAttempt(0);
-    // Persist developer-supplied config immediately so it's kept until explicitly changed
+    // Save server API URL if changed
+    if (cfg.serverApiUrl && cfg.serverApiUrl.startsWith("http")) {
+      fetch(`${API_BASE}/api/config/server-url`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: cfg.serverApiUrl }),
+      }).catch(() => null);
+    }
     deviceApi.saveConfig({ ...cfg }).catch(() => null);
 
     deviceApi.connect({ ...cfg, timeoutMs: 6000, saveConfig: true })
@@ -956,7 +965,7 @@ export default function SmartAttendanceDashboard() {
               <div className="grid shrink-0 grid-cols-2 gap-3 lg:grid-cols-4">
                 <SummaryTile label="Total Students"   value={stats.totalStudents}   color="cyan" />
                 <SummaryTile label="Attendance Today" value={stats.attendanceToday} color="emerald" />
-                <SummaryTile label="Devices"          value={`${stats.onlineDevices}/${stats.totalDevices}`} color="indigo" />
+                <SummaryTile label="Devices"          value={`${stats.onlineDevices}/${stats.totalDevices}`} color={stats.onlineDevices > 0 ? "green" : "red"} />
                 <SummaryTile label="Total Logs"       value={stats.totalLogs}       color="slate" />
               </div>
 
@@ -987,10 +996,37 @@ export default function SmartAttendanceDashboard() {
                       <FiUploadCloud /> Push All
                     </button>
                   </div>
-                  <p className="text-xs text-slate-500 leading-relaxed">
+                  <p className="text-xs text-slate-500 leading-relaxed mb-3">
                     Enroll students on the FK623 biometric device so they can scan for attendance.
                     Students must be pushed before they can mark attendance.
                   </p>
+                  {/* Students that will be pushed — loaded from local students.json */}
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                      Students to push ({students.length})
+                    </span>
+                    <button onClick={loadStudents} disabled={busy}
+                      className="rounded-lg border border-slate-700 p-1.5 text-slate-400 hover:text-white disabled:opacity-40 transition">
+                      <FiRefreshCw className={`text-xs ${busy ? "animate-spin" : ""}`} />
+                    </button>
+                  </div>
+                  {students.length === 0 ? (
+                    <p className="text-xs text-slate-600 py-3 text-center">
+                      No students registered yet. Add students in the Students panel first.
+                    </p>
+                  ) : (
+                    <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+                      {students.slice(0, 50).map(s => (
+                        <div key={s.studentId} className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-800/40 px-3 py-1.5 text-xs">
+                          <span className="font-medium text-slate-200 truncate mr-2">{s.name}</span>
+                          <span className="text-slate-500 shrink-0">{s.studentDeviceId}</span>
+                        </div>
+                      ))}
+                      {students.length > 50 && (
+                        <p className="text-center text-xs text-slate-600 pt-1">+{students.length - 50} more</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1120,6 +1156,19 @@ export default function SmartAttendanceDashboard() {
                 <div>
                   <label className="mb-1.5 block text-sm text-slate-400">Device ID</label>
                   <input type="text" value={devForm.deviceId} onChange={e => setDevForm({...devForm, deviceId: e.target.value})} className="form-field" />
+                </div>
+                <div className="sm:col-span-2 border-t border-slate-800 pt-4">
+                  <label className="mb-1.5 block text-sm font-medium text-amber-400">School Server URL</label>
+                  <input
+                    type="text"
+                    value={devForm.serverApiUrl ?? "https://backend.ecareafrica.net/api/v1"}
+                    onChange={e => setDevForm({...devForm, serverApiUrl: e.target.value})}
+                    placeholder="https://backend.ecareafrica.net/api/v1"
+                    className="form-field font-mono text-xs"
+                  />
+                  <p className="mt-1 text-xs text-slate-500">
+                    Change this if the school server moves to a new address. Takes effect immediately — no restart needed.
+                  </p>
                 </div>
               </div>
               {/* Location is read-only — fetched automatically from the school server registry */}
