@@ -1,1 +1,25 @@
-[]
+[
+  {
+    "id": "RW-3270",
+    "studentId": "RW-3270",
+    "name": "Orikubaasa Brian",
+    "firstName": "",
+    "lastName": "",
+    "className": "",
+    "section": "",
+    "studentDeviceId": "3270",
+    "deviceUserId": "3270",
+    "studentType": "",
+    "boardingStatus": "",
+    "roomName": "",
+    "dormitoryName": "",
+    "assignedDeviceId": "",
+    "parentName": "",
+    "parentPhone": "",
+    "phone": "",
+    "email": "",
+    "photoUrl": "",
+    "createdAt": "2026-10-12T18:35:54.543Z",
+    "updatedAt": "2026-10-12T18:35:54.543Z"
+  }
+]
