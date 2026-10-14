@@ -2,16 +2,16 @@
   "Version": 1,
 
   "Paths": {
-    "Root":         "C:\\EcaAfrica",
-    "Repo":         "C:\\EcaAfrica\\repo",
-    "Backend":      "C:\\EcaAfrica\\backend",
-    "Frontend":     "C:\\EcaAfrica\\frontend",
-    "FKBridge":     "C:\\EcaAfrica\\FKBridge",
-    "Scripts":      "C:\\EcaAfrica\\scripts",
-    "Logs":         "C:\\EcaAfrica\\logs",
-    "Backups":      "C:\\EcaAfrica\\backups",
-    "ChromeProfile":"C:\\EcaAfrica\\chrome-profile",
-    "Provisioning": "C:\\EcaAfrica\\provisioning"
+    "Root":         "C:\\Attendance_managment_system\\Attendance_managment_system",
+    "Repo":         "C:\\Attendance_managment_system\\Attendance_managment_system",
+    "Backend":      "C:\\Attendance_managment_system\\Attendance_managment_system\\backend",
+    "Frontend":     "C:\\Attendance_managment_system\\Attendance_managment_system\\frontend",
+    "FKBridge":     "C:\\Attendance_managment_system\\Attendance_managment_system\\FKBridge",
+    "Scripts":      "C:\\Attendance_managment_system\\Attendance_managment_system\\scripts",
+    "Logs":         "C:\\Attendance_managment_system\\Attendance_managment_system\\logs",
+    "Backups":      "C:\\Attendance_managment_system\\Attendance_managment_system\\backups",
+    "ChromeProfile":"C:\\Attendance_managment_system\\Attendance_managment_system\\chrome-profile",
+    "Provisioning": "C:\\Attendance_managment_system\\Attendance_managment_system\\provisioning"
   },
 
   "Git": {
