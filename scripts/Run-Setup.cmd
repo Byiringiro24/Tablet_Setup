@@ -95,7 +95,24 @@ goto :MENU
 :ENROLL
 echo.
 echo  Tablet enrollment wizard...
-echo  (You can also run: Enroll-Tablet.ps1 -BiometricDeviceIp 192.168.1.x)
+echo.
+echo   [A]  Auto-scan network for FK623 device (recommended)
+echo   [M]  Enter IP manually
+echo.
+set /p "EM=  Select [A/M]: "
+
+if /i "%EM%"=="A" (
+    echo.
+    echo  Scanning local network for FK623 devices on port 5005...
+    echo  This may take up to 30 seconds.
+    echo.
+    %PS% -File "%SCRIPTS%Enroll-Tablet.ps1" -Scan
+    echo.
+    echo  Enrollment complete. Run option [1] to apply, or device will connect automatically.
+    pause
+    goto :MENU
+)
+
 echo.
 set /p "IP=  FK623 biometric device IP address (e.g. 192.168.1.76): "
 set /p "ID=  Custom device ID [leave blank to auto-generate from hardware]: "
@@ -110,7 +127,7 @@ if "%ID%"=="" (
     %PS% -File "%SCRIPTS%Enroll-Tablet.ps1" -BiometricDeviceIp "%IP%" -DeviceId "%ID%"
 )
 echo.
-echo  Enrollment saved. Run option [1] to apply.
+echo  Enrollment saved. Device will connect automatically.
 pause
 goto :MENU
 
