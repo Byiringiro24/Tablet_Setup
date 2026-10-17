@@ -2576,6 +2576,273 @@ app.listen(PORT, '0.0.0.0', () => {
   }, 30_000);
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// LOCAL NETWORK FK623 DISCOVERY
+// Scans the tablet's local subnet for any host with port 5005 open (FK623 TCP).
+// This lets the bridge find the device IP automatically when on the same LAN
+// without needing the admin to know the FK623 IP in advance.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const net = require('net');
+
+/**
+ * Test if a TCP port is open on a host.
+ * @param {string} host
+ * @param {number} port
+ * @param {number} timeoutMs
+ * @returns {Promise<boolean>}
+ */
+function tcpProbe(host, port, timeoutMs = 800) {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    let done = false;
+    const finish = (result) => {
+      if (done) return;
+      done = true;
+      socket.destroy();
+      resolve(result);
+    };
+    socket.setTimeout(timeoutMs);
+    socket.on('connect', () => finish(true));
+    socket.on('timeout', () => finish(false));
+    socket.on('error', () => finish(false));
+    socket.connect(port, host);
+  });
+}
+
+/**
+ * Derive all .1–.254 addresses in the same /24 as a given IP.
+ * e.g. 192.168.1.45 → ['192.168.1.1', …, '192.168.1.254']
+ */
+function subnetAddresses(localIp) {
+  const parts = localIp.split('.');
+  if (parts.length !== 4) return [];
+  const prefix = parts.slice(0, 3).join('.');
+  const addrs = [];
+  for (let i = 1; i <= 254; i++) addrs.push(`${prefix}.${i}`);
+  return addrs;
+}
+
+/**
+ * Scan up to `concurrency` hosts in parallel.
+ * Returns array of IPs that have port open.
+ */
+async function scanSubnet(addrs, port, concurrency = 30, timeoutMs = 800) {
+  const found = [];
+  let idx = 0;
+  async function worker() {
+    while (idx < addrs.length) {
+      const host = addrs[idx++];
+      const open = await tcpProbe(host, port, timeoutMs);
+      if (open) found.push(host);
+    }
+  }
+  const workers = Array.from({ length: Math.min(concurrency, addrs.length) }, worker);
+  await Promise.all(workers);
+  return found;
+}
+
+/**
+ * Get all non-loopback, non-APIPA IPv4 addresses on this machine.
+ * Prefers addresses matching 192.168.x.x, 10.x.x.x, 172.16–31.x.x.
+ */
+function getLocalIPs() {
+  const os = require('os');
+  const ifaces = os.networkInterfaces();
+  const all = [];
+  for (const name of Object.keys(ifaces)) {
+    for (const iface of (ifaces[name] || [])) {
+      if (iface.family !== 'IPv4' || iface.internal) continue;
+      if (iface.address.startsWith('127.') || iface.address.startsWith('169.254.')) continue;
+      all.push({ name, address: iface.address });
+    }
+  }
+  // Prefer private ranges for the scan subnet
+  const private_ = all.filter(i =>
+    i.address.startsWith('192.168.') ||
+    i.address.startsWith('10.')      ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(i.address)
+  );
+  return private_.length ? private_ : all;
+}
+
+/**
+ * POST /api/device/scan
+ * Body: { port?: number, timeoutMs?: number }
+ *
+ * Scans the local subnet for FK623 biometric devices (default port 5005).
+ * Returns found IPs and optionally auto-connects to the first one.
+ *
+ * Steps:
+ *   1. Get local IPs of this tablet
+ *   2. For each local IP, scan the /24 subnet for open port 5005
+ *   3. Return all found IPs
+ *   4. If autoConnect=true (default), connect to the first found device
+ */
+app.post('/api/device/scan', async (req, res) => {
+  const scanPort    = Number(req.body?.port     || 5005);
+  const scanTimeout = Number(req.body?.timeoutMs || 800);
+  const autoConnect = req.body?.autoConnect !== false; // default true
+  const concurrency = Number(req.body?.concurrency || 30);
+
+  const localIPs = getLocalIPs();
+  if (localIPs.length === 0) {
+    return res.json({
+      success: false,
+      found: [],
+      message: 'No local network interfaces found. Connect to a network first.',
+    });
+  }
+
+  console.log(`[scan] Scanning for FK623 on port ${scanPort} from interfaces: ${localIPs.map(i => i.address).join(', ')}`);
+
+  // Collect all unique addresses across all local interfaces
+  const allAddrs = new Set();
+  for (const iface of localIPs) {
+    for (const addr of subnetAddresses(iface.address)) allAddrs.add(addr);
+  }
+
+  const startMs = Date.now();
+  const found = await scanSubnet([...allAddrs], scanPort, concurrency, scanTimeout);
+  const elapsedMs = Date.now() - startMs;
+
+  console.log(`[scan] Found ${found.length} device(s) with port ${scanPort} open in ${elapsedMs}ms: ${found.join(', ')}`);
+
+  // Auto-connect to the first found device if requested and not already connected
+  let connectResult = null;
+  if (autoConnect && found.length > 0 && !(currentDevice && currentDevice.connected)) {
+    const targetIp = found[0];
+    const savedCfg  = activeDeviceConfig || loadDeviceConfig() || {};
+    const license   = savedCfg.license      || 1261;
+    const deviceId  = savedCfg.deviceId     || '';
+    const netPw     = savedCfg.netPassword  || 0;
+    const proto     = savedCfg.protocolType ?? -1;
+
+    console.log(`[scan] Auto-connecting to first found device: ${targetIp}:${scanPort}`);
+
+    try {
+      await ensureBridge();
+      stopLogPoll();
+      const result = await sendCommand(
+        `CONNECT|${targetIp}|${scanPort}|${license}|${deviceId}|${netPw}|${proto}|15000`,
+        25000
+      );
+      if (result.success) {
+        currentDevice = result.data;
+        // Persist discovered IP so auto-connect uses it on next restart
+        rememberLatestDeviceIp(targetIp, scanPort, { license, deviceId, netPassword: netPw, protocolType: proto });
+        syncTimeAfterConnect();
+        refreshUsersCache().catch(() => null);
+        startLogPoll();
+        connectResult = { connected: true, ip: targetIp, port: scanPort, device: result.data };
+        console.log(`[scan] Auto-connect success: ${targetIp}:${scanPort}`);
+      } else {
+        connectResult = { connected: false, ip: targetIp, error: result.error };
+        console.log(`[scan] Auto-connect failed: ${result.error}`);
+        scheduleAutoConnect(3000);
+      }
+    } catch (err) {
+      connectResult = { connected: false, ip: targetIp, error: err.message };
+      scheduleAutoConnect(3000);
+    }
+  }
+
+  res.json({
+    success: true,
+    found,
+    count: found.length,
+    elapsedMs,
+    scannedInterfaces: localIPs.map(i => `${i.name}: ${i.address}`),
+    port: scanPort,
+    connectResult,
+    message: found.length === 0
+      ? `No FK623 devices found on port ${scanPort}. Check the device is powered on and connected to the same network.`
+      : `Found ${found.length} device(s): ${found.join(', ')}${connectResult?.connected ? ` — connected to ${connectResult.ip}` : ''}`,
+  });
+});
+
+/**
+ * GET /api/device/saved-config
+ * Returns the currently saved device-config.json plus current connection state.
+ * Used by frontend to show what IP the bridge will auto-connect to.
+ */
+app.get('/api/device/saved-config', (req, res) => {
+  const saved = activeDeviceConfig || loadDeviceConfig();
+  res.json({
+    success: true,
+    config: saved,
+    currentDevice: currentDevice || null,
+    autoConnectEnabled,
+    bridgeReady,
+    bridgePath,
+    bridgeExists: fs.existsSync(bridgePath),
+  });
+});
+
+/**
+ * POST /api/device/set-ip
+ * Body: { ipAddress, port?, license?, deviceId? }
+ *
+ * Saves the FK623 IP to device-config.json and triggers an immediate
+ * reconnect attempt. This is the lightweight alternative to running
+ * Enroll-Tablet.ps1 — the admin can set the IP directly from the
+ * browser without opening a terminal.
+ */
+app.post('/api/device/set-ip', async (req, res) => {
+  const { ipAddress, port = 5005, license = 1261, deviceId = '', timeoutMs = 15000 } = req.body || {};
+  if (!ipAddress || !/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ipAddress)) {
+    return res.status(400).json({ success: false, error: 'Valid IPv4 address required (e.g. 192.168.1.76)' });
+  }
+
+  const cfg = {
+    ...(activeDeviceConfig || loadDeviceConfig() || {}),
+    ipAddress: ipAddress.trim(),
+    port: Number(port) || 5005,
+    license: Number(license) || 1261,
+    deviceId: String(deviceId || '').trim(),
+    netPassword: 0,
+    protocolType: -1,
+    timeoutMs: Number(timeoutMs) || 15000,
+  };
+  saveDeviceConfig(cfg);
+  activeDeviceConfig = cfg;
+  console.log(`[set-ip] Device IP updated to ${ipAddress}:${port}`);
+
+  // Immediately attempt connection with the new IP
+  let connectResult = null;
+  try {
+    stopLogPoll();
+    await ensureBridge();
+    const result = await sendCommand(
+      `CONNECT|${cfg.ipAddress}|${cfg.port}|${cfg.license}|${cfg.deviceId}|${cfg.netPassword}|${cfg.protocolType}|${cfg.timeoutMs}`,
+      cfg.timeoutMs + 10000
+    );
+    if (result.success) {
+      currentDevice = result.data;
+      autoConnectAttempt = 0;
+      syncTimeAfterConnect();
+      refreshUsersCache().catch(() => null);
+      startLogPoll();
+      connectResult = { connected: true, device: result.data };
+    } else {
+      connectResult = { connected: false, error: result.error };
+      scheduleAutoConnect(3000);
+    }
+  } catch (err) {
+    connectResult = { connected: false, error: err.message };
+    scheduleAutoConnect(3000);
+  }
+
+  res.json({
+    success: true,
+    config: cfg,
+    connectResult,
+    message: connectResult?.connected
+      ? `Connected to FK623 at ${ipAddress}:${port}`
+      : `IP saved. Connection attempt: ${connectResult?.error || 'failed — will retry automatically'}`,
+  });
+});
+
 process.on('SIGINT', () => {
   if (bridgeProcess) bridgeProcess.kill();
   process.exit(0);
