@@ -211,16 +211,41 @@ if (Test-Path $nextCfgFile) {
 
 # ── 6. Write .env files (preserve existing values) ────────────
 Step "Writing environment config files"
+
+# Resolve FK623 IP/port before writing .env (same logic as step 7)
+$cfgEarly = Get-EcaConfig
+$bioIpEarly   = $cfgEarly.Device.DefaultBiometricDeviceIp
+$bioPortEarly = [int]$cfgEarly.Device.DefaultBiometricDevicePort
+$provFileEarly = Join-Path $script:ProvisionDir 'device.json'
+if (Test-Path $provFileEarly) {
+    try {
+        $provEarly = Get-Content $provFileEarly -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($provEarly.Device.BiometricDeviceIp)   { $bioIpEarly   = $provEarly.Device.BiometricDeviceIp }
+        if ($provEarly.Device.BiometricDevicePort)  { $bioPortEarly = [int]$provEarly.Device.BiometricDevicePort }
+    } catch {}
+}
+# Also read existing device-config.json if present (highest priority — already enrolled)
+if (Test-Path $script:DeviceCfg) {
+    try {
+        $existDev = Get-Content $script:DeviceCfg -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($existDev.ipAddress) { $bioIpEarly   = $existDev.ipAddress }
+        if ($existDev.port)      { $bioPortEarly = [int]$existDev.port }
+    } catch {}
+}
+
 Set-EnvFile (Join-Path $script:BackendDir '.env') @{
-    PORT              = '5000'
-    SERVER_API_URL    = 'https://backend.ecareafrica.net/api/v1'
-    TABLET_UUID       = ''
+    PORT               = '5000'
+    SERVER_API_URL     = 'https://backend.ecareafrica.net/api/v1'
+    TABLET_UUID        = ''
     WG_SERVER_ENDPOINT = '169.58.124.150:51820'
-    VPN_ALLOWED_IPS   = '10.0.0.0/16'
-    WG_DNS            = '1.1.1.1'
-    DEV_PASSWORD      = 'admin1234'
+    VPN_ALLOWED_IPS    = '10.0.0.0/16'
+    WG_DNS             = '1.1.1.1'
+    DEV_PASSWORD       = 'admin1234'
+    DEVICE_IP          = $bioIpEarly
+    DEVICE_PORT        = "$bioPortEarly"
+    DEVICE_LICENSE     = "$([int]$cfgEarly.Device.License)"
 } -PreserveExisting
-L "Backend .env written (existing values preserved)"
+L "Backend .env written (DEVICE_IP=$bioIpEarly DEVICE_PORT=$bioPortEarly)"
 
 Set-EnvFile (Join-Path $script:FrontendDir '.env.local') @{
     NEXT_PUBLIC_API_URL = 'http://localhost:5000'

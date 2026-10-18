@@ -28,6 +28,17 @@ const WG_EXE             = process.env.WG_EXE || 'C:\\Program Files\\WireGuard\\
 const WIREGUARD_TUNNEL_NAME = process.env.WG_TUNNEL_NAME || 'EcareAfrica';
 const WG_TUNNEL_DIR      = process.env.WG_TUNNEL_DIR || `${process.env.PROGRAMDATA || 'C:\\ProgramData'}\\WireGuard`;
 
+// ── FK623 device defaults — read from ENV or fall back to config defaults ─────
+// These are used to bootstrap device-config.json on first run.
+// Override via environment variables or by writing device-config.json directly.
+//   DEVICE_IP      — FK623 device IP address on the local network
+//   DEVICE_PORT    — FK623 TCP port (default: 5005)
+//   DEVICE_LICENSE — FK623 SDK license number (matches the physical device)
+// Each tablet should have its own DEVICE_IP pointing to ITS assigned FK623.
+const DEFAULT_DEVICE_IP      = process.env.DEVICE_IP      || '192.168.1.76';
+const DEFAULT_DEVICE_PORT    = Number(process.env.DEVICE_PORT    || 5005);
+const DEFAULT_DEVICE_LICENSE = Number(process.env.DEVICE_LICENSE || 1261);
+
 async function getWireGuardRuntimeStatus() {
   const wgExeExists = fsSync.existsSync(WG_EXE);
   const wguiExists = fsSync.existsSync('C:\\Program Files\\WireGuard\\wireguard.exe');
@@ -237,6 +248,36 @@ let autoConnectAttempt = 0;
 // Loaded from file at startup, only updated when Developer modal saves new settings.
 // Never re-read from disk during auto-connect to avoid stale browser overwrites.
 let activeDeviceConfig = loadDeviceConfig();
+
+// ── Bootstrap default device-config.json if it doesn't exist ─────────────────
+// Without this, every fresh tablet install keeps looping "no device config in memory"
+// forever because the file was never created. We create a minimal config from
+// ecaafrica.json defaults so auto-connect can at least attempt a connection.
+// The admin can update the IP later via POST /api/device/set-ip or Enroll-Tablet.ps1.
+if (!activeDeviceConfig) {
+  const defaultCfg = {
+    ipAddress:    DEFAULT_DEVICE_IP,
+    port:         DEFAULT_DEVICE_PORT,
+    license:      DEFAULT_DEVICE_LICENSE,
+    deviceId:     '',
+    netPassword:  0,
+    protocolType: -1,
+    timeoutMs:    10000,
+    generatedAt:  new Date().toISOString(),
+    note:         'Auto-generated default — update ipAddress to match your FK623 device'
+  };
+  try {
+    if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+    fs.writeFileSync(deviceConfigFile, JSON.stringify(defaultCfg, null, 2));
+    activeDeviceConfig = defaultCfg;
+    console.log(`[startup] device-config.json created with default IP ${DEFAULT_DEVICE_IP}:${DEFAULT_DEVICE_PORT} (license=${DEFAULT_DEVICE_LICENSE})`);
+    console.log(`[startup] If FK623 is on a different IP, run: POST /api/device/set-ip { ipAddress: "192.168.x.x" }`);
+  } catch (err) {
+    console.warn('[startup] Could not create default device-config.json:', err.message);
+  }
+} else {
+  console.log(`[startup] Loaded device config: ${activeDeviceConfig.ipAddress}:${activeDeviceConfig.port} (license=${activeDeviceConfig.license})`);
+}
 
 // Simple fake bridge handler for local testing when FKBridge.exe is not available.
 // Enable by setting environment variable FAKE_BRIDGE=1 before starting the server.
