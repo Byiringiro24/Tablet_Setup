@@ -144,19 +144,7 @@ WG_DNS=1.1.1.1
 
 ### 3.2 Device config (`backend\data\device-config.json`)
 
-```powershell
-@"
-{
-  "ipAddress": "192.168.1.76",
-  "port": 5005,
-  "license": 1261,
-  "deviceId": "DV-KGL-01",
-  "netPassword": 0,
-  "protocolType": -1,
-  "timeoutMs": 10000
-}
-"@ | Set-Content C:\EcaAfrica\backend\data\device-config.json -Encoding UTF8
-```
+D:\Projectts 2026\Latest EcaAfrica 7-8-2026\Tablet Setup
 
 > Replace `192.168.1.76` with the FK623 device's actual IP on this school's network.
 
