@@ -34,13 +34,9 @@ logs/
 *.log
 
 # ── Environment ───────────────────────────────────────────────────────────────
-.env
-.env.local
-.env.production
 .env.*.local
 
 # ── IDE ───────────────────────────────────────────────────────────────────────
-.vscode/
 .idea/
 
 # ── OS ────────────────────────────────────────────────────────────────────────
@@ -96,3 +92,4 @@ frontend/README.md
 frontend/next.config.mjs
 frontend/postcss.config.mjs
 frontend/tailwind.config.ts
+config.bat

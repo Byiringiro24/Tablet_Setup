@@ -569,9 +569,11 @@ function ensureWireGuardConfigFile({ privateKey, serverPublicKey, vpnIp = '10.0.
   const confPath = path.join(WG_TUNNEL_DIR, `${tunnelName}.conf`);
   const tempConfPath = path.join(process.env.TEMP || 'C:\\Temp', `${tunnelName}.conf`);
 
-  if (!fsSync.existsSync(confPath) || !fsSync.readFileSync(confPath, 'utf8').includes('PublicKey = ')) {
-    fsSync.writeFileSync(confPath, Buffer.from(confContent, 'utf8'));
-  }
+  // Always write the conf file — this ensures a reinstall with a new server
+  // public key, new VPN IP, or new endpoint takes effect immediately.
+  // Previously this only wrote if the file was missing or lacked PublicKey,
+  // so changing the server public key left the old config unchanged.
+  fsSync.writeFileSync(confPath, Buffer.from(confContent, 'utf8'));
 
   try {
     fsSync.writeFileSync(tempConfPath, Buffer.from(confContent, 'utf8'));
@@ -1246,6 +1248,11 @@ app.post('/api/device/connect', async (req, res) => {
     if (cfg.ipAddress) {
       saveDeviceConfig(cfg);
       activeDeviceConfig = cfg;  // keep the latest FK device IP immediately available for reconnects
+      // Also persist to .env so the IP survives a full reinstall
+      if (saveConfig === true) {
+        saveEnvKey('DEVICE_IP', cfg.ipAddress);
+        saveEnvKey('DEVICE_PORT', String(cfg.port || 5005));
+      }
     }
   }
 
@@ -2848,6 +2855,12 @@ app.post('/api/device/set-ip', async (req, res) => {
   saveDeviceConfig(cfg);
   activeDeviceConfig = cfg;
   console.log(`[set-ip] Device IP updated to ${ipAddress}:${port}`);
+
+  // Also persist to .env so the IP survives a full reinstall of the tablet software.
+  // On reinstall, device-config.json is regenerated from .env DEVICE_IP.
+  saveEnvKey('DEVICE_IP', ipAddress.trim());
+  saveEnvKey('DEVICE_PORT', String(Number(port) || 5005));
+  if (license !== 1261) saveEnvKey('DEVICE_LICENSE', String(Number(license) || 1261));
 
   // Immediately attempt connection with the new IP
   let connectResult = null;
